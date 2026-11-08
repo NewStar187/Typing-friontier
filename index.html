@@ -79,7 +79,8 @@ canvas#field{display:block;position:absolute;inset:0;width:100%;height:100%}
 .typeline .lab{font-size:12px;color:var(--muted);white-space:nowrap}
 .typeline .txt{white-space:pre;min-width:0;overflow:hidden}
 .typeline .txt .bad{color:var(--enemy);text-decoration:underline wavy}
-.typeline .caret{display:inline-block;width:2px;height:24px;background:var(--brass);vertical-align:middle;animation:blink 1s steps(1) infinite}
+.typeline .caret{display:inline-block;width:2px;height:1.05em;background:var(--brass);vertical-align:-0.15em;margin:0 -1px;animation:blink 1s steps(1) infinite}
+.typeline .sel{background:rgba(90,169,255,.35);border-radius:2px}
 .typeline.ready{border-color:var(--ok)}
 .typeline.bad{border-color:var(--enemy)}
 .typeline.shake{animation:shake .25s}
@@ -184,7 +185,7 @@ kbd{font-family:var(--mono);color:var(--fg);background:var(--bg);border:1px soli
 /* 입력줄을 위 문장과 같은 글꼴·크기·여백으로 맞춰 글자가 정확히 아래에 오게 한다 */
 .typeline.pl-line{display:block;font-size:24px;line-height:1.6;padding:14px;min-height:0}
 .typeline.pl-line .txt{white-space:pre-wrap}
-.typeline.pl-line .caret{height:1.1em;vertical-align:-0.18em;margin-left:1px}
+.typeline.pl-line .caret{height:1.1em;vertical-align:-0.18em}
 .pl-target .done{color:var(--ok)}.pl-target .bad{color:var(--enemy);text-decoration:underline wavy}.pl-target .rest{color:var(--muted)}
 
 .big{font-family:var(--display);font-size:56px;margin:0;line-height:1}
@@ -237,7 +238,7 @@ table.stats tr.me td{color:var(--brass)}
         <span class="chip s" id="chipS">주술사 · 요격</span>
         <span class="chip lock" title="마법은 아직 들어 있지 않습니다">마법사</span>
       </div>
-      <div class="typeline" id="typeline"><span class="lab" id="tlLab">장교</span><span class="txt" id="tlTxt"></span><span class="caret"></span></div>
+      <div class="typeline" id="typeline"><span class="lab" id="tlLab">장교</span><span class="txt" id="tlTxt"></span></div>
       <div class="hint" id="hint"></div>
     </section>
     <div class="board" id="rosterBoard"><h3><span>장교 명부</span><span id="nextUnlock"></span></h3><div id="roster"></div></div>
@@ -269,7 +270,7 @@ table.stats tr.me td{color:var(--brass)}
     <h1 class="brand" style="font-size:34px">타자 측정<small>문장 세 개를 그대로 치세요. 틀리면 백스페이스로 고치고, 끝까지 맞게 치면 다음 문장으로 넘어갑니다. 측정값은 첫 3판 동안 레이팅으로 쓰입니다.</small></h1>
     <div class="status" id="plStep"></div>
     <div class="pl-target" id="plTarget"></div>
-    <div class="typeline pl-line" id="plLine"><span class="txt" id="plTxt"></span><span class="caret"></span></div>
+    <div class="typeline pl-line" id="plLine"><span class="txt" id="plTxt"></span></div>
     <div class="btns"><button id="plCancel" hidden>닫기</button></div>
   </div>
 </div>
@@ -312,7 +313,10 @@ table.stats tr.me td{color:var(--brass)}
     <div class="card">
       <h2>조작</h2>
       <div class="keys">
-        <kbd>Tab</kbd><span>장교와 주술사 전환 (← →도 됩니다). 전환하면 치던 내용은 지워집니다</span>
+        <kbd>Tab</kbd><span>장교와 주술사 전환. 전환하면 치던 내용은 지워집니다</span>
+        <kbd>← →</kbd><span>입력 위치를 한 글자씩 이동</span>
+        <kbd>Backspace</kbd><span>한 글자씩 지움</span>
+        <kbd>Ctrl + A</kbd><span>친 내용 전체 선택. 그 상태에서 치면 새로 쓰고, 지우면 전부 지워집니다</span>
         <kbd>장교</kbd><span>병력 이름을 치고 <kbd>Space</kbd>를 두 번 누르면 출격</span>
         <kbd>주술사</kbd><span>우리 본진으로 오는 적의 이름을 치고 <kbd>Space</kbd>를 두 번 누르면 요격. 같은 이름이 여럿이면 가장 가까운 적부터. 팀원이 먼저 잡으면 다음으로 가까운 적을 잡습니다</span>
         <kbd>Enter</kbd><span>경기 중 채팅</span>
@@ -384,6 +388,8 @@ const PLACEMENT_TEXTS = [
 ];
 // 병력 이동 시간(300타 방 기준) = TRAVEL_BASE초 + 키 수 × TRAVEL_PER_KEY초
 const TRAVEL_BASE = 7, TRAVEL_PER_KEY = 0.68;
+// 난전 공격 분배: 이 비율만큼은 레이팅에 비례, 나머지는 모두에게 똑같이
+const FFA_RATING_SHARE = 0.5;
 const SD_SOFT = 300, SD_HARD = 420, HARD_CAP = 900, ACTIVE_GAP = 1.5;
 const MODES = {
   '1v1': { key:'1v1', label:'1 대 1', teams:2, size:1, hp:100 },
@@ -450,10 +456,41 @@ function checkTyped(buf){
   return{ok,ref,valid:ok===buf.length};
 }
 // 오타 표시: 맞게 끝낸 글자는 기준 문장의 글자로, 오타가 들어간 글자부터는 빨간색으로
-function typedHtml(buf,ok,refText){
-  if(ok>=buf.length)return esc(compose(buf));
-  let cut=0,n=0;for(const ch of refText){const kk=keysOf(ch).length;if(cut+kk<=ok){cut+=kk;n++;}else break;}
-  return esc(refText.slice(0,n))+`<span class="bad">${esc(compose(buf.slice(cut)))}</span>`;
+// 입력 버퍼: 키를 저장하고, 커서·지우기는 글자 단위로 움직인다
+class TBuf{
+  constructor(){this.keys='';this.cur=0;this.sel=false;}
+  clear(){this.keys='';this.cur=0;this.sel=false;}
+  // 글자 경계(키 위치) 목록
+  bounds(){
+    const all=compose(this.keys),b=[0];let prevLen=0;
+    for(let k=1;k<=this.keys.length;k++){const c=compose(this.keys.slice(0,k));if(c.length>prevLen&&all.startsWith(c)){b.push(k);prevLen=c.length;}}
+    if(b[b.length-1]!==this.keys.length)b.push(this.keys.length);
+    return b;
+  }
+  insert(key){if(this.sel)this.clear();this.keys=this.keys.slice(0,this.cur)+key+this.keys.slice(this.cur);this.cur++;}
+  backspace(){
+    if(this.sel){this.clear();return;}
+    if(this.cur===0)return;
+    const b=this.bounds();let p=0,q=this.keys.length;
+    for(const x of b){if(x<this.cur)p=x;if(x>=this.cur){q=x;break;}}
+    const end=b.includes(this.cur)?this.cur:q;
+    this.keys=this.keys.slice(0,p)+this.keys.slice(end);this.cur=p;
+  }
+  left(){if(this.sel){this.sel=false;this.cur=0;return;}const b=this.bounds();let p=0;for(const x of b)if(x<this.cur)p=x;this.cur=p;}
+  right(){if(this.sel){this.sel=false;this.cur=this.keys.length;return;}const b=this.bounds();for(const x of b)if(x>this.cur){this.cur=x;return;}this.cur=this.keys.length;}
+  selectAll(){if(this.keys)this.sel=true;}
+}
+// 오타 표시: 맞게 끝낸 글자는 기준 글자로, 오타가 들어간 글자부터 빨간색. 커서와 선택도 함께 그린다
+function typedView(tb,ok,refText){
+  const buf=tb.keys;let chars,badFrom=Infinity;
+  if(ok>=buf.length)chars=[...compose(buf)];
+  else{let cut=0,n=0;for(const ch of refText){const kk=keysOf(ch).length;if(cut+kk<=ok){cut+=kk;n++;}else break;}chars=[...refText.slice(0,n),...compose(buf.slice(cut))];badFrom=n;}
+  const CARET='<span class="caret"></span>';
+  const m=Math.min(chars.length,[...compose(buf.slice(0,tb.cur))].length);
+  let h='';chars.forEach((c,i)=>{if(i===m&&!tb.sel)h+=CARET;h+=i>=badFrom?`<span class="bad">${esc(c)}</span>`:esc(c);});
+  if(tb.sel)return`<span class="sel">${h}</span>`+CARET;
+  if(m>=chars.length)h+=CARET;
+  return h;
 }
 function matchedChars(name,buf){let acc=0,n=0;for(const ch of name){const kk=keysOf(ch).length;if(acc+kk<=buf.length){acc+=kk;n++;}else break;}return n;}
 
@@ -481,7 +518,7 @@ async function hashPw(id,pw){
 /* =====================================================================
    해금
    ===================================================================== */
-const UNLOCK_ORIG=[null,null,{1:20},{1:20,2:10},{1:30,2:20,3:10},{4:10}];
+const UNLOCK_ORIG=[null,null,{1:10},{1:10,2:5},{1:15,2:10,3:5},{4:5}];
 const need=(n,uf)=>Math.max(1,Math.round(n*uf));
 function unlockedTier(counts,uf){let t=1;while(t<5){const req=UNLOCK_ORIG[t+1];if(Object.entries(req).every(([tt,n])=>counts[tt]>=need(n,uf)))t++;else break;}return t;}
 function neededTier(counts,tier,uf){if(tier>=5)return null;const req=UNLOCK_ORIG[tier+1];let best=null;for(const [tt,n] of Object.entries(req))if(counts[tt]<need(n,uf)&&(best===null||+tt>best))best=+tt;return best;}
@@ -516,7 +553,7 @@ class Engine{
     const c=[];this.teams.forEach((t,i)=>{if(i!==ft&&t.alive)c.push(i);});
     if(!c.length)return null;if(c.length===1)return c[0];
     let w=c.map(i=>Math.max(50,this.players.find(p=>p.team===i).rating));
-    const sum=w.reduce((a,b)=>a+b,0);w=w.map(x=>x/sum);
+    const sum=w.reduce((a,b)=>a+b,0);w=w.map(x=>FFA_RATING_SHARE*x/sum+(1-FFA_RATING_SHARE)/c.length);
     if(c.length>2)for(let it=0;it<4;it++){
       let ex=0;w=w.map(x=>{if(x>0.5){ex+=x-0.5;return 0.5;}return x;});if(ex<1e-9)break;
       const free=w.filter(x=>x<0.5).reduce((a,b)=>a+b,0);w=w.map(x=>x<0.5?x+ex*x/free:x);
@@ -693,7 +730,8 @@ class Bot{
    사람 입력
    ===================================================================== */
 class HumanInput{
-  constructor(){this.char='O';this.buf={O:'',S:''};this.counted={O:0,S:0};this.pending=false;this.correct=0;this.active=0;this.lastT=null;this.msg='';this.msgUntil=0;this.shakeAt=0;}
+  constructor(){this.char='O';this.tb={O:new TBuf(),S:new TBuf()};this.counted={O:0,S:0};this.pending=false;this.correct=0;this.active=0;this.lastT=null;this.msg='';this.msgUntil=0;this.shakeAt=0;}
+  get buf(){return{O:this.tb.O.keys,S:this.tb.S.keys};}
   get view(){return match.view;}
   get me(){return match.mySeat;}
   get team(){return match.myTeam;}
@@ -704,10 +742,10 @@ class HumanInput{
   check(buf){return checkTyped(buf);}
   validPrefix(ch,buf){return checkTyped(buf).valid;}
   target(){const b=this.buf.S;if(!b||this.char!=='S')return null;let best=null;for(const u of this.incoming())if(u.keys.startsWith(b)&&(!best||u.p>best.p))best=u;return best;}
-  clear(ch){this.buf[ch]='';this.counted[ch]=0;}
+  clear(ch){this.tb[ch].clear();this.counted[ch]=0;}
   switchTo(ch){if(ch===this.char)return;this.clear(this.char);this.char=ch;this.pending=false;}
   // 맞게 친 키는 같은 자리를 지웠다 다시 쳐도 한 번만 센다
-  push(ch,key){this.buf[ch]+=key;const b=this.buf[ch];if(checkTyped(b).valid&&b.length>this.counted[ch]){this.counted[ch]=b.length;this.correct++;}}
+  push(ch,key){const t=this.tb[ch];if(t.sel)this.clear(ch);t.insert(key);const b=t.keys;if(checkTyped(b).valid&&b.length>this.counted[ch]){this.counted[ch]=b.length;this.correct++;}}
   confirm(ch,u){
     if(ch==='O'){
       const why=this.view.canSummon(this.me,u);
@@ -720,20 +758,24 @@ class HumanInput{
   }
   onKey(e){
     if(this.dead())return;
-    const code=e.code;
-    if(code==='Tab'||code==='ArrowLeft'||code==='ArrowRight'){e.preventDefault();if(e.repeat)return;this.tick();this.switchTo(this.char==='O'?'S':'O');return;}
-    if(code==='Backspace'){e.preventDefault();this.tick();if(this.pending){this.pending=false;return;}this.buf[this.char]=this.buf[this.char].slice(0,-1);return;}
+    const code=e.code,ch=this.char,t=this.tb[ch];
+    if((e.ctrlKey||e.metaKey)&&code==='KeyA'){e.preventDefault();t.selectAll();this.pending=false;return;}
+    if(code==='Tab'){e.preventDefault();if(e.repeat)return;this.tick();this.switchTo(ch==='O'?'S':'O');return;}
+    if(code==='ArrowLeft'){e.preventDefault();this.pending=false;t.left();return;}
+    if(code==='ArrowRight'){e.preventDefault();this.pending=false;t.right();return;}
+    if(code==='Backspace'){e.preventDefault();this.tick();if(this.pending){this.pending=false;return;}if(t.sel)this.clear(ch);else t.backspace();return;}
     const key=keyFromEvent(e);if(key===null)return;
     e.preventDefault();this.tick();
-    const ch=this.char,b=this.buf[ch];
-    if(key===' '&&b==='')return; // 맨 앞 띄어쓰기는 받지 않는다
-    const full=UNITS.find(u=>u.keys===b);
-    if(this.pending){
-      this.pending=false;
-      if(key===' '){this.confirm(ch,full);return;}
-      this.push(ch,' '); // 이름 뒤에 띄어쓰기가 이어지는 경우
-    } else if(key===' '&&full){this.pending=true;return;}
-    if(key===' '&&this.buf[ch].endsWith(' ')){this.flash('이름이 맞지 않아서 실행할 수 없습니다');return;}
+    if(key===' '){
+      if(t.sel){this.clear(ch);return;}
+      const full=UNITS.find(u=>u.keys===t.keys);
+      if(this.pending){this.pending=false;this.confirm(ch,full);return;}
+      if(full){this.pending=true;return;}
+      if(t.cur===0)return; // 맨 앞 띄어쓰기는 받지 않는다
+      if(t.keys[t.cur-1]===' '||t.keys[t.cur]===' '){this.flash('이름에는 띄어쓰기가 두 번 연속으로 들어가지 않습니다');return;}
+      this.push(ch,' ');return;
+    }
+    if(this.pending){this.pending=false;this.push(ch,' ');} // 이름 뒤에 띄어쓰기가 이어지는 경우
     this.push(ch,key);
   }
   kpm(){return this.active>0?this.correct/this.active*60:0;}
@@ -902,7 +944,7 @@ function updateHud(){
   $('chipO').classList.toggle('on',inp.char==='O');$('chipS').classList.toggle('on',inp.char==='S');
   $('rosterBoard').classList.toggle('focus',inp.char==='O');$('threatBoard').classList.toggle('focus',inp.char==='S');
   const b=inp.buf[inp.char];const c=checkTyped(b);const valid=c.valid;
-  $('tlTxt').innerHTML=typedHtml(b,c.ok,c.ref.name)+(inp.pending?'<span class="muted"> ␣</span>':'');$('tlLab').textContent=inp.char==='O'?'장교':'주술사';
+  $('tlTxt').innerHTML=typedView(inp.tb[inp.char],c.ok,c.ref.name)+(inp.pending?'<span class="muted"> ␣</span>':'');$('tlLab').textContent=inp.char==='O'?'장교':'주술사';
   const full=UNITS.find(u=>u.keys===b);const tl=$('typeline');
   const absent=inp.char==='S'&&b&&valid&&!inp.target();
   tl.classList.toggle('ready',!!full&&!absent);tl.classList.toggle('bad',!valid);
@@ -993,24 +1035,29 @@ function enterAs(u){
 $('btnLogout').onclick=()=>{net.leaveRoom(true);user=null;$('authId').value=store.get('tdg.lastId','');showScreen('auth');};
 
 /* ----- 타자 측정 ----- */
-const pl={idx:0,buf:'',counted:0,correct:0,time:0,start:null,first:false};
-function openPlacement(first){Object.assign(pl,{idx:0,buf:'',counted:0,correct:0,time:0,start:null,first});$('plCancel').hidden=first;renderPlacement();showScreen('placement');}
+const pl={idx:0,tb:new TBuf(),counted:0,correct:0,time:0,start:null,first:false};
+function openPlacement(first){Object.assign(pl,{idx:0,tb:new TBuf(),counted:0,correct:0,time:0,start:null,first});$('plCancel').hidden=first;renderPlacement();showScreen('placement');}
 function renderPlacement(){
   const text=PLACEMENT_TEXTS[pl.idx],tk=keysOf(text);
   $('plStep').textContent=`${user?user.id+' · ':''}문장 ${pl.idx+1} / ${PLACEMENT_TEXTS.length}`;
-  let ok=0;while(ok<pl.buf.length&&pl.buf[ok]===tk[ok])ok++;
-  const n=matchedChars(text,pl.buf.slice(0,ok)),bad=ok<pl.buf.length;
+  const buf=pl.tb.keys;let ok=0;while(ok<buf.length&&buf[ok]===tk[ok])ok++;
+  const n=matchedChars(text,buf.slice(0,ok)),bad=ok<buf.length;
   $('plTarget').innerHTML=`<span class="done">${esc(text.slice(0,n))}</span>${bad?`<span class="bad">${esc(text.slice(n,n+1))}</span><span class="rest">${esc(text.slice(n+1))}</span>`:`<span class="rest">${esc(text.slice(n))}</span>`}`;
-  $('plTxt').innerHTML=typedHtml(pl.buf,ok,text);$('plLine').classList.toggle('bad',bad);
+  $('plTxt').innerHTML=typedView(pl.tb,ok,text);$('plLine').classList.toggle('bad',bad);
 }
 function placementKey(e){
-  if(e.code==='Backspace'){e.preventDefault();pl.buf=pl.buf.slice(0,-1);renderPlacement();return;}
+  const t=pl.tb;
+  if((e.ctrlKey||e.metaKey)&&e.code==='KeyA'){e.preventDefault();t.selectAll();renderPlacement();return;}
+  if(e.code==='Backspace'){e.preventDefault();t.backspace();renderPlacement();return;}
+  if(e.code==='ArrowLeft'){e.preventDefault();t.left();renderPlacement();return;}
+  if(e.code==='ArrowRight'){e.preventDefault();t.right();renderPlacement();return;}
   const key=keyFromEvent(e);if(key===null)return;e.preventDefault();
-  if(key===' '&&pl.buf==='')return;
+  if(key===' '&&(t.sel||t.cur===0)){if(t.sel){t.clear();pl.counted=0;}renderPlacement();return;}
   const now=performance.now()/1000;if(pl.start===null)pl.start=now;
-  const tk=keysOf(PLACEMENT_TEXTS[pl.idx]);pl.buf+=key;if(tk.startsWith(pl.buf)&&pl.buf.length>pl.counted){pl.counted=pl.buf.length;pl.correct++;}
-  if(pl.buf===tk){
-    pl.time+=now-pl.start;pl.start=null;pl.buf='';pl.counted=0;pl.idx++;
+  if(t.sel){t.clear();pl.counted=0;}
+  const tk=keysOf(PLACEMENT_TEXTS[pl.idx]);t.insert(key);if(tk.startsWith(t.keys)&&t.keys.length>pl.counted){pl.counted=t.keys.length;pl.correct++;}
+  if(t.keys===tk){
+    pl.time+=now-pl.start;pl.start=null;t.clear();pl.counted=0;pl.idx++;
     if(pl.idx>=PLACEMENT_TEXTS.length){profile.placement=Math.min(1500,Math.max(50,Math.round(pl.correct/pl.time*60)));saveProfile();toLobby();return;}
   }
   renderPlacement();
@@ -1135,14 +1182,15 @@ $('gchatIn').addEventListener('keydown',e=>{
    키 입력 분배
    ===================================================================== */
 document.addEventListener('keydown',e=>{
-  if(e.ctrlKey||e.altKey||e.metaKey)return;
+  const selAll=(e.ctrlKey||e.metaKey)&&!e.altKey&&e.code==='KeyA';
+  if((e.ctrlKey||e.altKey||e.metaKey)&&!selAll)return;
   const tag=(e.target&&e.target.tagName)||'';if(tag==='INPUT'||tag==='SELECT'||tag==='TEXTAREA')return;
   if(currentScreen()==='placement'){placementKey(e);return;}
   if(match&&match.state==='run'&&currentScreen()===null){
     if(e.code==='Enter'||e.code==='NumpadEnter'){e.preventDefault();const g=$('gchatIn');g.hidden=false;g.focus();renderGchat();return;}
     match.input.onKey(e);return;
   }
-  if(e.code==='Space'||e.code==='Backspace')e.preventDefault();
+  if(!selAll&&(e.code==='Space'||e.code==='Backspace'))e.preventDefault();
 });
 
 /* =====================================================================
