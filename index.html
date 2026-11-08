@@ -89,6 +89,14 @@ canvas#field{display:block;position:absolute;inset:0;width:100%;height:100%}
 .chip{padding:6px 12px;border-radius:6px;border:1px solid var(--line);color:var(--muted);font-weight:500}
 .chip.on.o{color:#0e141c;background:var(--ally);border-color:var(--ally);font-weight:700}
 .chip.on.s{color:#1a1205;background:var(--brass);border-color:var(--brass);font-weight:700}
+.chip.on.m{color:#160c22;background:var(--nco);border-color:var(--nco);font-weight:700}
+.mana{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+.mana .mbar{flex:1;max-width:360px;height:9px;background:var(--bg);border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.mana .mbar i{display:block;height:100%;background:var(--nco);transition:width .2s}
+.ucard .en{font-family:var(--mono);font-size:12.5px;color:var(--fg);word-break:break-word}
+.ucard .en .hit{color:var(--nco)}
+.ucard .cost{font-family:var(--mono);font-size:11px;color:var(--nco)}
+.ucard.nomana{opacity:.55}
 .chip.lock{opacity:.4;text-decoration:line-through}
 .typeline{min-height:46px;display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 12px;font-size:22px;overflow:hidden}
 .typeline .lab{font-size:12px;color:var(--muted);white-space:nowrap}
@@ -247,11 +255,12 @@ table.stats tr.me td{color:var(--brass)}
   <div class="roster-strip" id="rosterBoard"><div class="rs-head"><span>장교 명부 · 뽑을 수 있는 병력</span><span id="nextUnlock"></span></div><div class="rs-grid" id="roster"></div></div>
   <div class="bottom" id="bottom">
     <section class="console" id="console"><div class="cmain">
+      <div class="mana"><span class="lbl" id="manaLbl">팀 마나</span><div class="mbar"><i id="manaFill"></i></div><span class="num" id="manaNum">0 / 500</span></div>
       <div class="chars">
         <kbd>Tab</kbd>
         <span class="chip o" id="chipO">장교 · 소환</span>
         <span class="chip s" id="chipS">주술사 · 요격</span>
-        <span class="chip lock" title="마법은 아직 들어 있지 않습니다">마법사</span>
+        <span class="chip m" id="chipM">마법사 · 마법</span>
       </div>
       <div class="typeline" id="typeline"><span class="lab" id="tlLab">장교</span><span class="txt" id="tlTxt"></span></div>
       <div class="hint" id="hint"></div>
@@ -310,7 +319,7 @@ table.stats tr.me td{color:var(--brass)}
         <div class="modes" id="modeBtns">
           <button class="mode on" data-mode="1v1"><b>1 대 1</b><span>본진 체력 100</span></button>
           <button class="mode" data-mode="2v2"><b>2 대 2</b><span>팀 공동 본진 200</span></button>
-          <button class="mode" data-mode="3v3" disabled><b>3 대 3</b><span>마법사 구현 후 열림</span></button>
+          <button class="mode" data-mode="3v3"><b>3 대 3</b><span>팀 공동 본진 300</span></button>
           <button class="mode" data-mode="ffa"><b>개인 난전</b><span>각자 본진 100 · <select id="ffaN" aria-label="난전 인원"><option value="3">3명</option><option value="4" selected>4명</option><option value="5">5명</option><option value="6">6명</option></select></span></button>
         </div>
         <label class="field">방 제목<input id="roomTitle" maxlength="24"></label>
@@ -327,7 +336,9 @@ table.stats tr.me td{color:var(--brass)}
     <div class="card">
       <h2>조작</h2>
       <div class="keys">
-        <kbd>Tab</kbd><span>장교와 주술사 전환. 전환하면 치던 내용은 지워집니다</span>
+        <kbd>Tab</kbd><span>장교 → 주술사 → 마법사 전환 (Shift+Tab은 반대로). 전환하면 치던 내용은 지워집니다</span>
+        <kbd>마법사</kbd><span>영어 주문을 치고 <kbd>Space</kbd> 두 번 또는 <kbd>Enter</kbd>로 발동. 마나는 팀이 같이 쓰고, 쓸 때마다 그 마법 레벨이 오릅니다(최대 3)</span>
+        <kbd>배리어</kbd><span>배리어가 걸린 적은 주술사로 해제 문구(해제 / 빡센 해제 / 많이 빡센 해제)를 먼저 쳐야 요격할 수 있습니다</span>
         <kbd>← →</kbd><span>입력 위치를 한 글자씩 이동</span>
         <kbd>Backspace</kbd><span>치고 있는 글자는 자모 하나씩, 이미 완성된 글자는 한 글자씩 지움</span>
         <kbd>Ctrl + A</kbd><span>친 내용 전체 선택. 그 상태에서 치면 새로 쓰고, 지우면 전부 지워집니다</span>
@@ -408,6 +419,7 @@ const SD_SOFT = 300, SD_HARD = 420, HARD_CAP = 900, ACTIVE_GAP = 1.5;
 const MODES = {
   '1v1': { key:'1v1', label:'1 대 1', teams:2, size:1, hp:100 },
   '2v2': { key:'2v2', label:'2 대 2', teams:2, size:2, hp:200 },
+  '3v3': { key:'3v3', label:'3 대 3', teams:2, size:3, hp:300 },
   'ffa': { key:'ffa', label:'개인 난전', ffa:true, size:1, hp:100 },
 };
 function modeOf(key,n){ const m=Object.assign({},MODES[key]); if(m.ffa){m.teams=n;m.label=`개인 난전 ${n}인`;} return m; }
@@ -416,7 +428,7 @@ const BOT_PROFILES = [ // 타수 사이 값은 보간
   { kpm:300, q:0.035, rd:0.6, sd:0.3, margin:0.7 },
   { kpm:700, q:0.015, rd:0.3, sd:0.2, margin:0.4 },
 ];
-const ROLE_LABEL = { auto:'자동', O:'장교', S:'주술사' };
+const ROLE_LABEL = { auto:'자동', O:'장교', S:'주술사', M:'마법사' };
 const Q = new URLSearchParams(location.search);
 const TS = Math.max(0.1, +(Q.get('ts')||1));
 const DIR_ID = Q.get('dirid') || 'tdg-directory-v2';
@@ -464,9 +476,9 @@ const keyFromEvent=e=>{if(e.code==='Space')return' ';const m=KEYMAP[e.code];retu
 const glyphsOf=s=>[...s].filter(ch=>ch!==' ').length;
 const tierOf=g=>g<=5?1:g<=10?2:g<=15?3:g<=20?4:5;
 // 오타 판정: 친 키가 어떤 병력 이름의 키 순서와 어디까지 일치하는지
-function checkTyped(buf){
-  let ok=0,ref=UNITS[0];
-  for(const u of UNITS){const k=u.keys;let i=0;while(i<buf.length&&i<k.length&&buf[i]===k[i])i++;if(i>ok){ok=i;ref=u;}}
+function checkTyped(buf,list){
+  list=list||UNITS;let ok=0,ref=list[0];
+  for(const u of list){const k=u.keys;let i=0;while(i<buf.length&&i<k.length&&buf[i]===k[i])i++;if(i>ok){ok=i;ref=u;}}
   return{ok,ref,valid:ok===buf.length};
 }
 // 입력 버퍼: 글자 하나씩 조각으로 저장한다(실제 한글 입력기처럼).
@@ -546,9 +558,44 @@ function unlockedTier(counts,uf){let t=1;while(t<5){const req=UNLOCK_ORIG[t+1];i
 function neededTier(counts,tier,uf){if(tier>=5)return null;const req=UNLOCK_ORIG[tier+1];let best=null;for(const [tt,n] of Object.entries(req))if(counts[tt]<need(n,uf)&&(best===null||+tt>best))best=+tt;return best;}
 
 /* =====================================================================
+   마법
+   ===================================================================== */
+const MANA_MAX = 500, MANA_SUMMON = 1, MANA_INTERCEPT = 1.25;
+const SPELLS = {
+  barrier:{ name:'배리어', cost:100, max:3,
+    texts:['basic made in korea barrier','well maintained japanese barrier','german barrier made with the soul of an engineering student'],
+    ko:['기본적인 국내산 배리어','잘 관리된 일본산 배리어','공대생의 영혼이 담긴 독일제 배리어'] },
+  accel:{ name:'가속', cost:150, max:3,
+    texts:['speed like the wind','storm speed so fast no one can see your feet','speed fast enough for a fair race with the jayuro ghost'],
+    ko:['바람같은 가속','발이 보이지 않는 질풍같은 가속','자유로 귀신과 좋은 승부가 가능한 가속'] },
+  heal:{ name:'회복', cost:125, max:1,
+    texts:['chicken and beer on friday night'], ko:['금요일 밤의 치킨과 맥주'] },
+  shield:{ name:'결계', cost:200, max:3,
+    texts:['a wall you can meet on a test paper','a giant iron wall like her heart toward a man she does not like','a wall with the soul of the architecture professor who stops choi inseo from going home'],
+    ko:['시험지에서 만날 수 있는 벽','싫어하는 남자를 향한 여자의 마음과 같은 거대한 철벽','최인서의 퇴근을 막는 건축학과 교수의 영혼이 담긴 벽'] },
+  turret:{ name:'자동 요격', cost:250, max:3,
+    texts:['wait was this a tower defense game','at this point we could just build only these','with this tower our shaman is going to be out of a job'],
+    ko:['장르가 타워 디펜스였어?','이정도면 이것만 깔아도 될 것 같습니다','이 타워만 있으면 이제 우리 주술사는 백수가 될 것 같습니다'] },
+};
+const SPELL_IDS = Object.keys(SPELLS);
+const BARRIER_PHRASES = ['해제','빡센 해제','많이 빡센 해제'].map((t,i)=>({lv:i+1,name:t,keys:keysOf(t)}));
+const ACCEL_UP=[0.10,0.15,0.20], SHIELD_PCT=[0.2,0.3,0.4], SHIELD_DUR=[20,25,30], HEAL_PCT=0.10;
+const TURRET_N=[5,8,11], TURRET_DUR=[10,13,16], TURRET_RATE=[0.6,0.8,1.0];
+const spellText=(id,lv)=>{const S=SPELLS[id];return S.texts[Math.min(lv,S.max)-1];};
+const spellKo=(id,lv)=>{const S=SPELLS[id];return S.ko[Math.min(lv,S.max)-1];};
+function spellDesc(id,lv,M,roomLv){
+  const i=Math.min(lv,SPELLS[id].max)-1;
+  if(id==='barrier')return`맵 위 아군 병력 전체에 ${lv}단계 배리어 · 상대는 "${BARRIER_PHRASES[i].name}"을 먼저 쳐야 함`;
+  if(id==='accel')return`맵 위 아군 병력 이동 속도 +${Math.round(ACCEL_UP[i]*100)}% (죽을 때까지)`;
+  if(id==='heal')return`본진 체력 +${Math.round(M.hp*HEAL_PCT)}`;
+  if(id==='shield')return`본진 보호막 ${Math.round(M.hp*SHIELD_PCT[i])} · ${SHIELD_DUR[i]}초`;
+  return`${TURRET_N[i]}글자 이하 적 자동 요격 · ${TURRET_DUR[i]}초 · 포탑 ${Math.round(roomLv*TURRET_RATE[i])}타`;
+}
+
+/* =====================================================================
    엔진 (방장 브라우저에서만 돌아가는 판정)
    ===================================================================== */
-function mkPS(){return{tier:1,counts:{1:0,2:0,3:0,4:0,5:0},unlockTime:{},st:{sent_g:0,leaked_g:0,int_g:0,int_nco_g:0,mana:0,mana_nco:0,summons:0}};}
+function mkPS(){return{tier:1,counts:{1:0,2:0,3:0,4:0,5:0},unlockTime:{},spl:{barrier:1,accel:1,heal:1,shield:1,turret:1},st:{sent_g:0,leaked_g:0,int_g:0,int_nco_g:0,mana:0,mana_nco:0,summons:0,casts:0,unbar:0}};}
 function ncoPhaseOf(sd,time){
   if(sd===null)return null;const el=time-sd;
   if(el<60)return{n:1,rate:300,tiers:[1],left:60-el};
@@ -558,17 +605,18 @@ function ncoPhaseOf(sd,time){
 }
 class Engine{
   constructor(roomLv,seats,M){
-    // 방 레벨 자동 보정: 이동 시간·피해량은 300/방 레벨배, 해금 기준·부사관 타수는 방 레벨/300배
+    // 방 레벨 자동 보정: 이동 시간·피해량은 300/방 레벨배, 해금 기준·부사관 타수는 방 레벨/300배 (마나는 보정 없음)
     this.room=roomLv;this.k=300/roomLv;this.M=M;
     this.dmgMult=this.k;this.uf=1/this.k;this.ncoScale=roomLv/300;
     this.players=seats.map(s=>Object.assign(mkPS(),{team:s.team,name:s.name,rating:s.rating||300,kpm:0}));
-    this.teams=Array.from({length:M.teams},()=>({hp:M.hp,alive:true,out:null,nco_hit_g:0}));
+    this.teams=Array.from({length:M.teams},()=>({hp:M.hp,alive:true,out:null,nco_hit_g:0,mana:0,shield:null,turret:null,tkills:0}));
     this.nco=this.teams.map(()=>({acc:0,next:null}));
     this.time=0;this.sd=null;this.units=[];this.nid=1;this.aims={};this.over=false;this.winner=null;
   }
   travel(k){return(TRAVEL_BASE+TRAVEL_PER_KEY*k)*this.k;}
   canSummon(pi,u){const P=this.players[pi];if(!this.teams[P.team].alive)return'dead';if(u.tier>P.tier)return'locked';return null;}
   ncoPhase(){return ncoPhaseOf(this.sd,this.time);}
+  gain(team,amt){const T=this.teams[team];T.mana=Math.min(MANA_MAX,T.mana+amt);}
   // 난전: 타수(레이팅)가 높은 사람에게 더 자주 가되, 한 명에게 절반 넘게 몰리지 않게
   pickTarget(ft){
     if(!this.M.ffa)return 1-ft;
@@ -584,25 +632,77 @@ class Engine{
   }
   spawn(fp,ft,u,nco){
     const tt=this.pickTarget(ft);if(tt===null)return;
-    this.units.push({id:this.nid++,fp,ft,tt,name:u.name,keys:u.keys,k:u.k,g:u.g,tier:u.tier,T:this.travel(u.k),p:0,nco,alive:true});
+    this.units.push({id:this.nid++,fp,ft,tt,name:u.name,keys:u.keys,k:u.k,g:u.g,tier:u.tier,T:this.travel(u.k),p:0,nco,alive:true,bar:0,spd:1});
   }
   summon(pi,name){
     const u=UNIT_BY_NAME[name];if(!u||this.over)return'invalid';
     const why=this.canSummon(pi,u);if(why)return why;
     const P=this.players[pi];this.spawn(pi,P.team,u,false);
-    P.counts[u.tier]++;P.st.summons++;P.st.sent_g+=u.g;P.st.mana+=u.g;
+    P.counts[u.tier]++;P.st.summons++;P.st.sent_g+=u.g;P.st.mana+=u.g*MANA_SUMMON;this.gain(P.team,u.g*MANA_SUMMON);
     const nt=unlockedTier(P.counts,this.uf);
     if(nt>P.tier){for(let t=P.tier+1;t<=nt;t++)P.unlockTime[t]=this.time;P.tier=nt;}
     return null;
   }
-  // 같은 이름이 여럿이면 가장 가까운 적. 팀원이 먼저 잡았으면 자연히 다음으로 가까운 적이 잡힌다.
+  // 같은 이름이 여럿이면 배리어가 없는 것 중 가장 가까운 적. 팀원이 먼저 잡았으면 자연히 다음으로 가까운 적이 잡힌다.
   intercept(pi,name){
     const team=this.players[pi].team;if(!this.teams[team].alive)return null;let best=null;
-    for(const u of this.units)if(u.alive&&u.tt===team&&u.name===name&&(!best||u.p>best.p))best=u;
+    for(const u of this.units)if(u.alive&&u.tt===team&&u.name===name&&!u.bar&&(!best||u.p>best.p))best=u;
     if(!best)return null;
-    best.alive=false;const P=this.players[pi];
-    if(best.nco){P.st.int_nco_g+=best.g;P.st.mana_nco+=best.g*1.25;}else{P.st.int_g+=best.g;P.st.mana+=best.g*1.25;}
+    best.alive=false;const P=this.players[pi],amt=best.g*MANA_INTERCEPT;
+    if(best.nco){P.st.int_nco_g+=best.g;P.st.mana_nco+=amt;}else{P.st.int_g+=best.g;P.st.mana+=amt;}
+    this.gain(team,amt);
     return best;
+  }
+  // 해제 문구: 그 단계 배리어가 걸린 적 중 가장 가까운 하나만 벗긴다
+  unbarrier(pi,lv){
+    const team=this.players[pi].team;if(!this.teams[team].alive)return null;let best=null;
+    for(const u of this.units)if(u.alive&&u.tt===team&&u.bar===lv&&(!best||u.p>best.p))best=u;
+    if(best){best.bar=0;this.players[pi].st.unbar++;}
+    return best;
+  }
+  cast(pi,id){
+    const S=SPELLS[id];if(!S||this.over)return'invalid';
+    const P=this.players[pi],ti=P.team,T=this.teams[ti],M=this.M;
+    if(!T.alive)return'dead';if(T.mana<S.cost)return'mana';
+    const lv=P.spl[id],i=Math.min(lv,S.max)-1;T.mana-=S.cost;
+    if(id==='barrier'){for(const u of this.units)if(u.alive&&u.ft===ti&&!u.nco&&!u.bar)u.bar=lv;}
+    else if(id==='accel'){for(const u of this.units)if(u.alive&&u.ft===ti&&!u.nco)u.spd=Math.max(u.spd||1,1+ACCEL_UP[i]);}
+    else if(id==='heal'){T.hp=Math.min(M.hp,T.hp+M.hp*HEAL_PCT);}
+    else if(id==='shield'){const mx=M.hp*SHIELD_PCT[i];T.shield={hp:mx,max:mx,until:this.time+SHIELD_DUR[i],lv};}
+    else if(id==='turret'){T.turret={lv,until:this.time+TURRET_DUR[i],n:TURRET_N[i],rate:this.room*TURRET_RATE[i]/60,tid:null,prog:0};}
+    if(lv<S.max)P.spl[id]=lv+1;
+    P.st.casts++;
+    return null;
+  }
+  // 자동 요격 포탑: 마감이 가장 급한 적부터, 사람이 치고 있는 적은 건너뛰고, 직접 한 글자씩 친다
+  turretStep(ti,T,dt){
+    const tu=T.turret;if(!tu)return;
+    if(this.time>=tu.until||!T.alive){T.turret=null;return;}
+    const claimed=id=>{for(const [p,a] of Object.entries(this.aims))if(a===id&&this.players[p]&&this.players[p].team===ti)return true;return false;};
+    const need=u=>(u.bar?BARRIER_PHRASES[u.bar-1].keys.length+2:u.k+2);
+    const rem=u=>(1-u.p)*u.T/(u.spd||1);
+    const total=u=>(u.bar?BARRIER_PHRASES[u.bar-1].keys.length+2:0)+u.k+2;
+    const slack=(u,done)=>rem(u)-(total(u)-done)/tu.rate;
+    const cands=this.units.filter(u=>u.alive&&u.tt===ti&&u.g<=tu.n&&!claimed(u.id));
+    let tg=tu.tid!=null?this.units.find(u=>u.id===tu.tid&&u.alive):null;
+    if(tg&&claimed(tg.id)){ // 같은 이름의 다음 적으로 넘기고 진행도는 유지
+      const alt=cands.filter(u=>u.name===tg.name&&u.bar===tg.bar).sort((a,b)=>b.p-a.p)[0];
+      if(alt)tg=alt;else{tg=null;tu.prog=0;}
+    }
+    if(tg&&slack(tg,tu.prog)<0){tg=null;tu.prog=0;}
+    if(tg&&tu.prog<0.3*need(tg)){
+      const s0=slack(tg,tu.prog);const urgent=cands.filter(u=>u!==tg&&slack(u,0)>=0&&slack(u,0)<s0-2).sort((a,b)=>slack(a,0)-slack(b,0))[0];
+      if(urgent){tg=urgent;tu.prog=0;}
+    }
+    if(!tg){
+      let best=null,bs=Infinity;
+      for(const u of cands){const s=slack(u,0);if(s<0)continue;if(s<bs-0.3||(Math.abs(s-bs)<=0.3&&best&&u.g>best.g)){best=u;bs=Math.min(bs,s);}}
+      tg=best;tu.prog=0;
+    }
+    tu.tid=tg?tg.id:null;if(!tg)return;
+    tu.prog+=tu.rate*dt;
+    if(tg.bar){const bk=BARRIER_PHRASES[tg.bar-1].keys.length+2;if(tu.prog>=bk){tg.bar=0;tu.prog-=bk;}}
+    if(!tg.bar&&tu.prog>=tg.k+2){tg.alive=false;T.tkills++;tu.prog=0;tu.tid=null;}
   }
   pickNco(tiers){const t=tiers[Math.floor(Math.random()*tiers.length)];const c=UNITS.filter(u=>u.tier===t);return c[Math.floor(Math.random()*c.length)];}
   ncoStep(dt){
@@ -622,15 +722,20 @@ class Engine{
       if(this.time>=SD_HARD||(this.time>=SD_SOFT&&live.every(p=>p.tier>=3)))this.sd=this.time;
     }
     if(this.sd!==null)this.ncoStep(dt);
+    this.teams.forEach((T,ti)=>{if(T.shield&&this.time>=T.shield.until)T.shield=null;this.turretStep(ti,T,dt);});
     for(const u of this.units){
       if(!u.alive)continue;
-      u.p+=dt/u.T;
+      u.p+=dt/u.T*(u.spd||1);
       if(u.p>=1){
         u.alive=false;u.p=1;const T=this.teams[u.tt];
-        if(T.alive){T.hp=Math.max(0,T.hp-u.g*this.dmgMult);if(u.nco)T.nco_hit_g+=u.g;else this.players[u.fp].st.leaked_g+=u.g;}
+        if(T.alive){
+          let dmg=u.g*this.dmgMult;
+          if(T.shield){const a=Math.min(T.shield.hp,dmg);T.shield.hp-=a;dmg-=a;if(T.shield.hp<=1e-6)T.shield=null;}
+          T.hp=Math.max(0,T.hp-dmg);if(u.nco)T.nco_hit_g+=u.g;else this.players[u.fp].st.leaked_g+=u.g;
+        }
       }
     }
-    this.teams.forEach(t=>{if(t.alive&&t.hp<=0){t.alive=false;t.out=this.time;}});
+    this.teams.forEach(t=>{if(t.alive&&t.hp<=0){t.alive=false;t.out=this.time;t.turret=null;t.shield=null;}});
     this.units=this.units.filter(u=>u.alive&&this.teams[u.tt].alive);
     for(const [p,id] of Object.entries(this.aims))if(!this.units.some(u=>u.id===id))delete this.aims[p];
     const alive=this.teams.map((t,i)=>t.alive?i:-1).filter(i=>i>=0);
@@ -643,15 +748,17 @@ class Engine{
   }
   snapshot(){
     return{t:'snap',time:this.time,sd:this.sd,
-      T:this.teams.map(t=>[+t.hp.toFixed(2),t.alive?1:0]),
-      P:this.players.map(p=>[p.tier,p.counts,Math.round(p.kpm||0)]),
-      u:this.units.map(u=>[u.id,u.fp,u.ft,u.tt,UNIT_BY_NAME[u.name].i,+u.p.toFixed(4),+u.T.toFixed(3),u.nco?1:0]),
+      T:this.teams.map(t=>[+t.hp.toFixed(2),t.alive?1:0,+t.mana.toFixed(2),
+        t.shield?[+t.shield.hp.toFixed(1),+t.shield.max.toFixed(1),+(t.shield.until-this.time).toFixed(1),t.shield.lv]:0,
+        t.turret?[t.turret.lv,+(t.turret.until-this.time).toFixed(1),t.turret.n,t.turret.tid,+t.turret.prog.toFixed(2),+t.turret.rate.toFixed(3)]:0,t.tkills]),
+      P:this.players.map(p=>[p.tier,p.counts,Math.round(p.kpm||0),SPELL_IDS.map(id=>p.spl[id])]),
+      u:this.units.map(u=>[u.id,u.fp,u.ft,u.tt,UNIT_BY_NAME[u.name].i,+u.p.toFixed(4),+u.T.toFixed(3),u.nco?1:0,u.bar,+(u.spd||1).toFixed(2)]),
       aims:this.aims};
   }
   endPayload(){
     return{t:'end',winner:this.winner,time:this.time,
-      teams:this.teams.map(t=>({hp:t.hp,out:t.out,nco_hit_g:t.nco_hit_g})),
-      players:this.players.map(p=>({name:p.name,team:p.team,tier:p.tier,unlockTime:p.unlockTime,st:p.st}))};
+      teams:this.teams.map(t=>({hp:t.hp,out:t.out,nco_hit_g:t.nco_hit_g,tkills:t.tkills})),
+      players:this.players.map(p=>({name:p.name,team:p.team,tier:p.tier,unlockTime:p.unlockTime,st:p.st,spl:p.spl}))};
   }
 }
 
@@ -660,28 +767,35 @@ class GuestView{
   constructor(roomLv,seats,M){
     this.room=roomLv;this.k=300/roomLv;this.M=M;this.uf=roomLv/300;
     this.players=seats.map(s=>Object.assign(mkPS(),{team:s.team,name:s.name,rating:s.rating||300,kpm:0}));
-    this.teams=Array.from({length:M.teams},()=>({hp:M.hp,alive:true}));
+    this.teams=Array.from({length:M.teams},()=>({hp:M.hp,alive:true,mana:0,shield:null,turret:null,tkills:0}));
     this.time=0;this.sd=null;this.units=[];this.aims={};this.killed=new Set();
   }
   apply(d){
     this.time=d.time;this.sd=d.sd;
-    d.T.forEach(([hp,al],i)=>{this.teams[i].hp=hp;this.teams[i].alive=!!al;});
-    d.P.forEach(([tier,counts,kpm],i)=>{this.players[i].tier=tier;this.players[i].counts=counts;this.players[i].kpm=kpm||0;});
+    d.T.forEach(([hp,al,mana,sh,tu,tk],i)=>{const T=this.teams[i];T.hp=hp;T.alive=!!al;T.mana=mana;T.tkills=tk||0;
+      T.shield=sh?{hp:sh[0],max:sh[1],left:sh[2],lv:sh[3]}:null;
+      T.turret=tu?{lv:tu[0],left:tu[1],n:tu[2],tid:tu[3],prog:tu[4],rate:tu[5]}:null;});
+    d.P.forEach(([tier,counts,kpm,spl],i)=>{const P=this.players[i];P.tier=tier;P.counts=counts;P.kpm=kpm||0;SPELL_IDS.forEach((id,j)=>P.spl[id]=spl[j]);});
     const prev=new Map(this.units.map(u=>[u.id,u]));
     this.units=d.u.filter(r=>!this.killed.has(r[0])).map(r=>{
-      const o=prev.get(r[0]);if(o){o.p=r[5];return o;}
+      const o=prev.get(r[0]);if(o){o.p=r[5];o.bar=r[8];o.spd=r[9];return o;}
       const def=UNITS[r[4]];
-      return{id:r[0],fp:r[1],ft:r[2],tt:r[3],name:def.name,keys:def.keys,k:def.k,g:def.g,tier:def.tier,p:r[5],T:r[6],nco:!!r[7],alive:true};
+      return{id:r[0],fp:r[1],ft:r[2],tt:r[3],name:def.name,keys:def.keys,k:def.k,g:def.g,tier:def.tier,p:r[5],T:r[6],nco:!!r[7],alive:true,bar:r[8],spd:r[9]};
     });
     for(const id of[...this.killed])if(!d.u.some(r=>r[0]===id))this.killed.delete(id);
     this.aims=d.aims||{};
   }
-  extrapolate(dt){this.time+=dt;for(const u of this.units)u.p=Math.min(0.999,u.p+dt/u.T);}
+  extrapolate(dt){
+    this.time+=dt;for(const u of this.units)u.p=Math.min(0.999,u.p+dt/u.T*(u.spd||1));
+    for(const T of this.teams){if(T.shield)T.shield.left=Math.max(0,T.shield.left-dt);if(T.turret){T.turret.left=Math.max(0,T.turret.left-dt);if(T.turret.tid!=null)T.turret.prog+=T.turret.rate*dt;}}
+  }
   ncoPhase(){return ncoPhaseOf(this.sd,this.time);}
   canSummon(pi,u){const P=this.players[pi];if(!this.teams[P.team].alive)return'dead';if(u.tier>P.tier)return'locked';return null;}
   travel(k){return(TRAVEL_BASE+TRAVEL_PER_KEY*k)*this.k;}
-  localKill(team,name){let best=null;for(const u of this.units)if(u.tt===team&&u.name===name&&(!best||u.p>best.p))best=u;if(best){this.killed.add(best.id);this.units=this.units.filter(u=>u!==best);}}
+  localKill(team,name){let best=null;for(const u of this.units)if(u.tt===team&&u.name===name&&!u.bar&&(!best||u.p>best.p))best=u;if(best){this.killed.add(best.id);this.units=this.units.filter(u=>u!==best);}}
 }
+function shieldLeft(v,T){return T.shield?(T.shield.left!=null?T.shield.left:T.shield.until-v.time):0;}
+function turretLeft(v,T){return T.turret?(T.turret.left!=null?T.turret.left:T.turret.until-v.time):0;}
 
 /* =====================================================================
    봇
@@ -694,16 +808,17 @@ function botProfile(kpm){
 }
 function gauss(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
 class Bot{
-  constructor(e,pi,kpm,role){this.e=e;this.pi=pi;this.p=botProfile(kpm);this.r=kpm/60;this.role=role||'auto';this.char=this.role==='S'?'S':'O';this.action=null;this.lastInc=0;this.typed=0;this.busy=0;}
+  constructor(e,pi,kpm,role){this.e=e;this.pi=pi;this.p=botProfile(kpm);this.r=kpm/60;this.role=role||'auto';this.char=this.role==='S'?'S':this.role==='M'?'M':'O';this.action=null;this.lastInc=0;this.typed=0;this.busy=0;}
   get team(){return this.e.players[this.pi].team;}
   est(k){const q=this.p.q;return(k/this.r)*(1+2*q)+0.25*q*k;}
   sample(k){let ty=0;for(let i=0;i<k;i++)if(Math.random()<this.p.q)ty++;return(k/this.r+ty*(2/this.r+0.25))*Math.exp(gauss()*0.08);}
-  claimed(u){for(const [p,id] of Object.entries(this.e.aims))if(+p!==this.pi&&id===u.id)return true;return false;}
+  claimed(u){for(const [p,id] of Object.entries(this.e.aims))if(+p!==this.pi&&id===u.id)return true;const tu=this.e.teams[this.team].turret;return!!(tu&&tu.tid===u.id);}
   incoming(){return this.e.units.filter(u=>u.alive&&u.tt===this.team&&!this.claimed(u));}
+  cost(u){return u.bar?BARRIER_PHRASES[u.bar-1].keys.length:u.k;}
   savable(t0,startChar){
-    const inc=this.incoming().sort((a,b)=>(1-a.p)*a.T-(1-b.p)*b.T);
+    const inc=this.incoming().sort((a,b)=>(1-a.p)*a.T/(a.spd||1)-(1-b.p)*b.T/(b.spd||1));
     let t=t0+(startChar!=='S'?this.p.sd:0),saved=0,first=null;
-    for(const u of inc){const rem=(1-u.p)*u.T,d=this.est(u.k)+2/this.r+this.p.rd;if(t+d<=rem-this.p.margin){t+=d;saved+=u.g;if(!first)first=u;}}
+    for(const u of inc){const rem=(1-u.p)*u.T/(u.spd||1),d=this.est(this.cost(u)+(u.bar?u.k:0))+2/this.r*(u.bar?2:1)+this.p.rd;if(t+d<=rem-this.p.margin){t+=d;saved+=u.g;if(!first)first=u;}}
     return{saved,first,n:inc.length,inc};
   }
   tierOrder(){
@@ -716,12 +831,34 @@ class Bot{
   pick(t){const c=this.avail(t);return c.length?c[Math.floor(Math.random()*c.length)]:null;}
   wait(s){delete this.e.aims[this.pi];this.action={kind:'W',total:s||0.3,el:0};}
   startSummon(u){delete this.e.aims[this.pi];const sw=this.char!=='O'?this.p.sd:0;this.char='O';this.action={kind:'S',u,total:sw+this.sample(u.k)+2/this.r+this.p.rd*0.3,el:0};}
-  startIntercept(t){const sw=this.char!=='S'?this.p.sd:0;this.char='S';this.e.aims[this.pi]=t.id;this.action={kind:'I',u:t,total:sw+this.p.rd+this.sample(t.k)+2/this.r,el:0};}
+  startIntercept(t){
+    const sw=this.char!=='S'?this.p.sd:0;this.char='S';this.e.aims[this.pi]=t.id;
+    if(t.bar){const ph=BARRIER_PHRASES[t.bar-1];this.action={kind:'B',u:t,lv:t.bar,k:ph.keys.length,total:sw+this.p.rd+this.sample(ph.keys.length)+2/this.r,el:0};}
+    else this.action={kind:'I',u:t,k:t.k,total:sw+this.p.rd+this.sample(t.k)+2/this.r,el:0};
+  }
+  // 마법 고르기: 위급하면 회복·포탑·결계, 아군 병력이 많이 나가 있으면 배리어·가속
+  chooseSpell(){
+    const T=this.e.teams[this.team],M=this.e.M,can=id=>T.mana>=SPELLS[id].cost;
+    const inc=this.e.units.filter(u=>u.alive&&u.tt===this.team).length;
+    const own=this.e.units.filter(u=>u.alive&&u.ft===this.team&&!u.nco);
+    if(T.hp<M.hp*0.6&&can('heal'))return'heal';
+    if(inc>=4&&!T.turret&&can('turret'))return'turret';
+    if(inc>=3&&!T.shield&&can('shield'))return'shield';
+    if(own.filter(u=>!u.bar).length>=3&&can('barrier'))return'barrier';
+    if(own.filter(u=>(u.spd||1)<1.05).length>=3&&can('accel'))return'accel';
+    return null;
+  }
+  startCast(id){
+    delete this.e.aims[this.pi];const txt=spellText(id,this.e.players[this.pi].spl[id]);
+    const sw=this.char!=='M'?this.p.sd:0;this.char='M';this.action={kind:'C',id,k:txt.length,total:sw+this.sample(txt.length)+2/this.r,el:0};
+  }
   plan(){
     if(!this.e.teams[this.team].alive)return this.wait(1);
+    if(this.role==='M'){const id=this.chooseSpell();return id?this.startCast(id):this.wait(0.5);}
     const base=this.savable(0,this.char);
-    if(this.role==='S'){const t=base.first||base.inc.sort((a,b)=>(1-a.p)*a.T-(1-b.p)*b.T)[0];return t?this.startIntercept(t):this.wait();}
+    if(this.role==='S'){const t=base.first||base.inc[0];return t?this.startIntercept(t):this.wait();}
     if(this.role==='O'){for(const t of this.tierOrder()){const u=this.pick(t);if(u)return this.startSummon(u);}return this.wait();}
+    if(this.e.teams[this.team].mana>=300){const id=this.chooseSpell();if(id&&(base.n===0||id==='turret'||id==='shield'||id==='heal'))return this.startCast(id);}
     for(const t of this.tierOrder()){
       const u=this.pick(t);if(!u)continue;
       const D=(this.char!=='O'?this.p.sd:0)+this.est(u.k)+2/this.r+this.p.rd*0.3;
@@ -739,7 +876,9 @@ class Bot{
   complete(){
     const a=this.action;this.action=null;
     if(a.kind==='S'){this.e.summon(this.pi,a.u.name);this.typed+=a.u.k;}
-    else if(a.kind==='I'){this.e.intercept(this.pi,a.u.name);delete this.e.aims[this.pi];this.typed+=a.u.k;}
+    else if(a.kind==='I'){this.e.intercept(this.pi,a.u.name);delete this.e.aims[this.pi];this.typed+=a.k;}
+    else if(a.kind==='B'){this.e.unbarrier(this.pi,a.lv);this.typed+=a.k;}
+    else if(a.kind==='C'){this.e.cast(this.pi,a.id);this.typed+=a.k;}
     if(this.busy>3)this.e.players[this.pi].kpm=this.typed/this.busy*60;
   }
   update(dt){
@@ -752,31 +891,58 @@ class Bot{
 /* =====================================================================
    사람 입력
    ===================================================================== */
+const keyEn=e=>{if(e.code==='Space')return' ';const m=/^Key([A-Z])$/.exec(e.code);return m?m[1].toLowerCase():null;};
+const CHAR_ORDER=['O','S','M'], CHAR_LABEL={O:'장교',S:'주술사',M:'마법사'};
 class HumanInput{
-  constructor(){this.char='O';this.tb={O:new TBuf(),S:new TBuf()};this.counted={O:0,S:0};this.pending=false;this.correct=0;this.active=0;this.lastT=null;this.msg='';this.msgUntil=0;this.shakeAt=0;}
-  get buf(){return{O:this.tb.O.keys,S:this.tb.S.keys};}
+  constructor(){this.char='O';this.tb={O:new TBuf(),S:new TBuf(),M:new TBuf()};this.counted={O:0,S:0,M:0};this.pending=false;this.correct=0;this.active=0;this.lastT=null;this.msg='';this.msgUntil=0;this.shakeAt=0;}
+  get buf(){return{O:this.tb.O.keys,S:this.tb.S.keys,M:this.tb.M.keys};}
   get view(){return match.view;}
   get me(){return match.mySeat;}
   get team(){return match.myTeam;}
   dead(){return!this.view.teams[this.team].alive;}
   tick(){const t=performance.now()/1000;if(this.lastT!==null){const g=t-this.lastT;if(g<=ACTIVE_GAP)this.active+=g;}this.lastT=t;}
-  flash(msg){this.msg=msg;this.msgUntil=performance.now()+1600;this.shakeAt=performance.now();}
+  flash(msg){this.msg=msg;this.msgUntil=performance.now()+1800;this.shakeAt=performance.now();}
   incoming(){return this.view.units.filter(u=>u.tt===this.team);}
-  check(buf){return checkTyped(buf);}
-  validPrefix(ch,buf){return checkTyped(buf).valid;}
-  target(){const b=this.buf.S;if(!b||this.char!=='S')return null;let best=null;for(const u of this.incoming())if(u.keys.startsWith(b)&&(!best||u.p>best.p))best=u;return best;}
+  // 캐릭터마다 칠 수 있는 문장 목록
+  cands(ch){
+    if(ch==='O')return UNITS;
+    if(ch==='S')return UNITS.concat(BARRIER_PHRASES);
+    const P=this.view.players[this.me];return SPELL_IDS.map(id=>{const t=spellText(id,P.spl[id]);return{id,name:t,keys:t};});
+  }
+  check(ch){return checkTyped(this.tb[ch].keys,this.cands(ch));}
+  validPrefix(ch,buf){return checkTyped(buf,this.cands(ch)).valid;}
+  fullOf(ch){const k=this.tb[ch].keys;return k?this.cands(ch).find(c=>c.keys===k):null;}
+  target(){
+    const b=this.buf.S;if(!b||this.char!=='S')return null;let best=null;
+    const ph=BARRIER_PHRASES.find(p=>p.keys.startsWith(b));
+    for(const u of this.incoming()){
+      const hit=ph?u.bar===ph.lv:(!u.bar&&u.keys.startsWith(b));
+      if(hit&&(!best||u.p>best.p))best=u;
+    }
+    return best;
+  }
   clear(ch){this.tb[ch].clear();this.counted[ch]=0;}
   switchTo(ch){if(ch===this.char)return;this.clear(this.char);this.char=ch;this.pending=false;}
   // 맞게 친 키는 같은 자리를 지웠다 다시 쳐도 한 번만 센다
-  push(ch,key){const t=this.tb[ch];if(t.sel)this.clear(ch);t.insert(key);const b=t.keys;if(checkTyped(b).valid&&b.length>this.counted[ch]){this.counted[ch]=b.length;this.correct++;}}
-  confirm(ch,u){
+  push(ch,key){const t=this.tb[ch];if(t.sel)this.clear(ch);t.insert(key);const b=t.keys;if(this.validPrefix(ch,b)&&b.length>this.counted[ch]){this.counted[ch]=b.length;this.correct++;}}
+  confirm(ch,item){
     if(ch==='O'){
-      const why=this.view.canSummon(this.me,u);
-      if(why==='locked'){this.flash(`${u.tier}급은 아직 잠겨 있습니다`);return;}
-      match.act('summon',u.name);this.clear('O');
+      const why=this.view.canSummon(this.me,item);
+      if(why==='locked'){this.flash(`${item.tier}급은 아직 잠겨 있습니다`);return;}
+      match.act('summon',item.name);this.clear('O');
+    } else if(ch==='S'){
+      if(item.lv){
+        if(!this.incoming().some(u=>u.bar===item.lv)){this.flash(`${item.lv}단계 배리어가 걸린 적이 없습니다`);return;}
+        match.act('unbarrier',item.lv);this.clear('S');return;
+      }
+      const same=this.incoming().filter(x=>x.name===item.name);
+      if(!same.length){this.flash('우리 본진으로 오는 적 중에 그 이름이 없습니다');return;}
+      if(same.every(x=>x.bar)){this.flash(`배리어부터 해제하세요: "${BARRIER_PHRASES[same[0].bar-1].name}"`);return;}
+      match.act('intercept',item.name);this.clear('S');
     } else {
-      if(!this.incoming().some(x=>x.name===u.name)){this.flash('우리 본진으로 오는 적 중에 그 이름이 없습니다');return;}
-      match.act('intercept',u.name);this.clear('S');
+      const S=SPELLS[item.id];
+      if(this.view.teams[this.team].mana<S.cost){this.flash(`마나가 부족합니다 (${S.cost} 필요)`);return;}
+      match.act('cast',item.id);this.clear('M');
     }
   }
   onKey(e){
@@ -784,27 +950,27 @@ class HumanInput{
     if(this.dead()){if(code==='Tab'){e.preventDefault();if(!e.repeat)cycleSpectate();}return;}
     if(code==='Enter'||code==='NumpadEnter'){
       e.preventDefault();this.tick();this.pending=false;
-      const full=UNITS.find(u=>u.keys===t.keys);
-      if(full)this.confirm(ch,full);else if(t.keys)this.flash('이름이 맞지 않아서 실행할 수 없습니다');
+      const full=this.fullOf(ch);
+      if(full)this.confirm(ch,full);else if(t.keys)this.flash('맞지 않아서 실행할 수 없습니다');
       return;
     }
     if((e.ctrlKey||e.metaKey)&&code==='KeyA'){e.preventDefault();t.selectAll();this.pending=false;return;}
-    if(code==='Tab'){e.preventDefault();if(e.repeat)return;this.tick();this.switchTo(ch==='O'?'S':'O');return;}
+    if(code==='Tab'){e.preventDefault();if(e.repeat)return;this.tick();const i=CHAR_ORDER.indexOf(ch);this.switchTo(CHAR_ORDER[(i+(e.shiftKey?2:1))%3]);return;}
     if(code==='ArrowLeft'){e.preventDefault();this.pending=false;t.left();return;}
     if(code==='ArrowRight'){e.preventDefault();this.pending=false;t.right();return;}
     if(code==='Backspace'){e.preventDefault();this.tick();if(this.pending){this.pending=false;return;}if(t.sel)this.clear(ch);else t.backspace();return;}
-    const key=keyFromEvent(e);if(key===null)return;
+    const key=ch==='M'?keyEn(e):keyFromEvent(e);if(key===null)return;
     e.preventDefault();this.tick();
     if(key===' '){
       if(t.sel){this.clear(ch);return;}
-      const full=UNITS.find(u=>u.keys===t.keys);
+      const full=this.fullOf(ch);
       if(this.pending){this.pending=false;this.confirm(ch,full);return;}
       if(full){this.pending=true;return;}
       if(t.cur===0)return; // 맨 앞 띄어쓰기는 받지 않는다
-      if(t.before()===' '||t.after()===' '){this.flash('이름에는 띄어쓰기가 두 번 연속으로 들어가지 않습니다');return;}
+      if(t.before()===' '||t.after()===' '){this.flash('띄어쓰기는 두 번 연속으로 들어가지 않습니다');return;}
       this.push(ch,' ');return;
     }
-    if(this.pending){this.pending=false;this.push(ch,' ');} // 이름 뒤에 띄어쓰기가 이어지는 경우
+    if(this.pending){this.pending=false;this.push(ch,' ');} // 문장 뒤에 띄어쓰기가 이어지는 경우
     this.push(ch,key);
   }
   kpm(){return this.active>0?this.correct/this.active*60:0;}
@@ -825,9 +991,12 @@ function beginMatch(o){
   match.input=new HumanInput();
   match.act=(a,name)=>{
     if(match.state!=='run')return;
-    if(match.role==='guest'){if(a==='intercept')match.view.localKill(match.myTeam,name);net.toHost({t:'act',a,name});}
-    else if(a==='summon'){const why=match.engine.summon(match.mySeat,name);if(why==='locked')match.input.flash('아직 잠겨 있습니다');}
-    else match.engine.intercept(match.mySeat,name);
+    if(match.role==='guest'){if(a==='intercept')match.view.localKill(match.myTeam,name);net.toHost({t:'act',a,name});return;}
+    const e=match.engine,me=match.mySeat;
+    if(a==='summon'){const why=e.summon(me,name);if(why==='locked')match.input.flash('아직 잠겨 있습니다');}
+    else if(a==='intercept')e.intercept(me,name);
+    else if(a==='unbarrier')e.unbarrier(me,+name);
+    else if(a==='cast'){const why=e.cast(me,name);if(why==='mana')match.input.flash('마나가 부족합니다');}
   };
   fx.length=0;prevUnits.clear();rowOf.clear();flash.length=0;
   $('modeLbl').textContent=o.M.label;$('roomLv').textContent=Math.round(o.roomLv);
@@ -877,7 +1046,7 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 const cv=$('field');const ctx=cv.getContext('2d');
 const fx=[];const prevUnits=new Map();const rowOf=new Map();const flash=[];
 const TIERC=['','#a9bccf','#78d3ac','#e9b44c','#ff9a55','#ff5f8f'];
-const C={bg:'#141d28',grid:'#1f2b3a',line:'#283749',fg:'#e4ebf2',muted:'#8597aa',ally:'#5aa9ff',mate:'#4fd1c5',enemy:'#ff6f61',brass:'#e9b44c',nco:'#b38cff',dead:'#3a4656'};
+const C={bar:'#9ad0ff',tur:'#7cf2c9',acc:'#f6c177',bg:'#141d28',grid:'#1f2b3a',line:'#283749',fg:'#e4ebf2',muted:'#8597aa',ally:'#5aa9ff',mate:'#4fd1c5',enemy:'#ff6f61',brass:'#e9b44c',nco:'#b38cff',dead:'#3a4656'};
 const FONT="'IBM Plex Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif";
 function resize(){const r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;if(!r.width)return;cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0);}
 window.addEventListener('resize',resize);if(window.ResizeObserver)new ResizeObserver(()=>resize()).observe(cv.parentElement);
@@ -918,6 +1087,7 @@ function draw(){
     ctx.textAlign='center';ctx.fillStyle=T.alive?C.fg:C.muted;ctx.font=`bold ${big?30:18}px ${FONT}`;
     ctx.fillText(T.alive?Math.ceil(T.hp):'탈락',x+BW/2,y+h/2+(big?10:6));
     ctx.font=`bold ${big?12:12}px ${FONT}`;ctx.fillStyle=T.alive?col:C.muted;ctx.fillText(label,x+BW/2,y+h/2-(big?24:14),BW-6);
+    if(T.alive&&T.shield){ctx.strokeStyle=C.bar;ctx.lineWidth=3;ctx.setLineDash([6,4]);ctx.strokeRect(x+5,y+5,BW-10,h-10);ctx.setLineDash([]);ctx.font=`bold 11px ${FONT}`;ctx.fillStyle=C.bar;ctx.fillText(`결계 ${Math.ceil(T.shield.hp)} · ${Math.ceil(shieldLeft(v,T))}초`,x+BW/2,y+h/2+(big?30:22),BW-8);}
   };
   base(2,8,H-16,myT,teamColor(myT),M.ffa?(spec?teamName(myT):'내 본진'):'우리 본진',true);
   const opp=v.teams.map((t,i)=>i).filter(i=>i!==myT);
@@ -925,6 +1095,8 @@ function draw(){
   const oppY={};
   opp.forEach((ti,k)=>{const y=8+k*(segH+6);oppY[ti]=y+segH/2;base(W-BW-2,y,segH,ti,teamColor(ti),M.ffa?teamName(ti):'상대 본진',opp.length===1);});
   const tgt=spec?null:match.input.target();const buf=match.input.buf.S;
+  const phB=!spec&&match.input.char==='S'&&buf?BARRIER_PHRASES.find(p=>p.keys.startsWith(buf)):null;
+  const tuT=v.teams[myT].turret;let tuPos=null;
   const aimBy={};for(const [p,id] of Object.entries(v.aims||{}))if(+p!==me&&v.players[p]&&v.players[p].team===myT)aimBy[id]=v.players[p].name;
   const rows=Math.max(1,Math.floor((mid-40)/RH));
   const list=[...v.units].filter(u=>u.tt===myT||u.ft===myT).sort((a,b)=>a.p-b.p);
@@ -939,24 +1111,36 @@ function draw(){
     ctx.font=`${FS}px ${FONT}`;
     // 난전: 오는 병력엔 보낸 사람, 보내는 병력엔 받는 사람을 그 사람 색으로
     const other=M.ffa?(toMe?u.ft:u.tt):null;const ocol=other!==null?teamColor(other):null;
-    const pre=u.nco?'부 ':'';const suf=other!==null?(toMe?` ◂ ${teamName(other)}`:` → ${teamName(other)}`):'';
+    const fast=(u.spd||1)>1.01;const pre=(u.nco?'부 ':'')+(fast?'» ':'');const suf=other!==null?(toMe?` ◂ ${teamName(other)}`:` → ${teamName(other)}`):'';
     ctx.font=`${FS}px ${FONT}`;const nw=ctx.measureText(pre+u.name).width;ctx.font=`bold ${FS-1}px ${FONT}`;const sw=suf?ctx.measureText(suf).width:0;ctx.font=`${FS}px ${FONT}`;
     const tw=nw+sw+18;
     let x0,x1;if(toMe){const hd=R-(R-L)*u.p;x0=hd;x1=hd+tw;}else{const hd=L+(R-L)*u.p;x1=hd;x0=hd-tw;}
-    const isT=tgt&&tgt.id===u.id,mate=toMe&&aimBy[u.id];
+    const isT=tgt&&tgt.id===u.id,mate=toMe&&aimBy[u.id],isTu=toMe&&tuT&&tuT.tid===u.id;
     const mine=!toMe&&u.fp===me;
     ctx.fillStyle=isT?'#2a2414':mate?'#11292a':'#0e141c';ctx.globalAlpha=0.93;rr(x0,y-hh/2,tw,hh,5);ctx.fill();ctx.globalAlpha=1;
     ctx.strokeStyle=isT?C.brass:mate?C.mate:ocol?ocol:u.nco?C.nco:toMe?C.enemy:(mine?C.ally:'#3d6a99');ctx.lineWidth=isT||mate||ocol?2:1;
     if(u.nco)ctx.setLineDash([3,3]);rr(x0,y-hh/2,tw,hh,5);ctx.stroke();ctx.setLineDash([]);
+    if(u.bar){ctx.strokeStyle=C.bar;ctx.lineWidth=1.5;rr(x0-3,y-hh/2-3,tw+6,hh+6,7);ctx.stroke();}
+    if(isTu){ctx.strokeStyle=C.tur;ctx.lineWidth=1.5;ctx.setLineDash([2,3]);rr(x0-5,y-hh/2-5,tw+10,hh+10,8);ctx.stroke();ctx.setLineDash([]);tuPos={x:x0,y};}
     ctx.fillStyle=TIERC[u.tier];ctx.fillRect(toMe?x0:x1-4,y-hh/2,4,hh);
     ctx.textAlign='left';let tx=x0+9;
-    if(pre){ctx.fillStyle=C.nco;ctx.fillText(pre,tx,y+1);tx+=ctx.measureText(pre).width;}
-    if(isT){const n=matchedChars(u.name,buf);const a=u.name.slice(0,n);ctx.fillStyle=C.brass;ctx.fillText(a,tx,y+1);tx+=ctx.measureText(a).width;ctx.fillStyle=C.fg;ctx.fillText(u.name.slice(n),tx,y+1);tx+=ctx.measureText(u.name.slice(n)).width;}
+    if(u.nco){ctx.fillStyle=C.nco;ctx.fillText('부 ',tx,y+1);tx+=ctx.measureText('부 ').width;}
+    if(fast){ctx.fillStyle=C.acc;ctx.fillText('» ',tx,y+1);tx+=ctx.measureText('» ').width;}
+    if(isTu&&!u.bar){const n=matchedChars(u.name,u.keys.slice(0,Math.floor(tuT.prog)));const a=u.name.slice(0,n);ctx.fillStyle=C.tur;ctx.fillText(a,tx,y+1);tx+=ctx.measureText(a).width;ctx.fillStyle=C.fg;ctx.fillText(u.name.slice(n),tx,y+1);tx+=ctx.measureText(u.name.slice(n)).width;}
+    else if(isT&&!phB){const n=matchedChars(u.name,buf);const a=u.name.slice(0,n);ctx.fillStyle=C.brass;ctx.fillText(a,tx,y+1);tx+=ctx.measureText(a).width;ctx.fillStyle=C.fg;ctx.fillText(u.name.slice(n),tx,y+1);tx+=ctx.measureText(u.name.slice(n)).width;}
     else{ctx.fillStyle=toMe?C.fg:(mine?'#cfe3f7':'#93a6ba');ctx.fillText(u.name,tx,y+1);tx+=ctx.measureText(u.name).width;}
     if(suf){ctx.font=`bold ${FS-1}px ${FONT}`;ctx.fillStyle=ocol;ctx.fillText(suf,tx,y+1);ctx.font=`${FS}px ${FONT}`;}
-    if(mate){ctx.font=`11px ${FONT}`;ctx.fillStyle=C.mate;ctx.fillText(`${aimBy[u.id]} 조준`,x0,y-hh/2-6);}
+    if(mate){ctx.font=`11px ${FONT}`;ctx.fillStyle=C.mate;ctx.textAlign='right';ctx.fillText(`${aimBy[u.id]} 조준`,x1,y-hh/2-6);ctx.textAlign='left';}
+    if(u.bar){const ph=BARRIER_PHRASES[u.bar-1];ctx.font=`bold 11px ${FONT}`;ctx.textAlign='left';
+      const lit=isT&&phB?matchedChars(ph.name,buf):isTu?matchedChars(ph.name,ph.keys.slice(0,Math.floor(tuT.prog))):0;
+      let lx=x0,ly=y-hh/2-7;ctx.fillStyle=C.bar;ctx.fillText('배리어 ',lx,ly);lx+=ctx.measureText('배리어 ').width;
+      if(lit){ctx.fillStyle=isTu&&!isT?C.tur:C.brass;ctx.fillText(ph.name.slice(0,lit),lx,ly);lx+=ctx.measureText(ph.name.slice(0,lit)).width;}
+      ctx.fillStyle='#e4f2ff';ctx.fillText(ph.name.slice(lit),lx,ly);ctx.font=`${FS}px ${FONT}`;}
     prevUnits.set(u.id,{x:toMe?x0:x1,y,p:u.p,tt:u.tt,g:u.g});
   }
+  if(tuT){const tx0=L+6,ty0=mid-30;ctx.fillStyle='#0e141c';rr(tx0,ty0,158,22,5);ctx.fill();ctx.strokeStyle=C.tur;ctx.lineWidth=1.5;rr(tx0,ty0,158,22,5);ctx.stroke();
+    ctx.font=`bold 11px ${FONT}`;ctx.fillStyle=C.tur;ctx.textAlign='left';ctx.fillText(`포탑 Lv${tuT.lv} · ${tuT.n}글자 이하 · ${Math.ceil(turretLeft(v,v.teams[myT]))}초`,tx0+8,ty0+12);
+    if(tuPos){ctx.strokeStyle=C.tur;ctx.globalAlpha=0.6;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(tx0+158,ty0+11);ctx.lineTo(tuPos.x,tuPos.y);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;}}
   for(const [id,o] of prevUnits)if(!seen.has(id)){
     prevUnits.delete(id);rowOf.delete(id);
     if(!v.teams[o.tt]||!v.teams[o.tt].alive)continue;
@@ -993,12 +1177,13 @@ function updateHud(){
   if(!match)return;const v=match.view;const inp=match.input;
   $('clock').textContent=fmtTime(v.time);
   const ph=v.ncoPhase();$('sdBadge').hidden=!ph;if(ph)$('sdBadge').textContent=`서든데스 ${ph.n}단계`;
-  $('chipO').classList.toggle('on',inp.char==='O');$('chipS').classList.toggle('on',inp.char==='S');
-  $('rosterBoard').classList.toggle('focus',inp.char==='O');$('threatBoard').classList.toggle('focus',inp.char==='S');$('threatBoard').querySelector('h3 span').textContent=match.M.ffa?(spectating()?`${teamName(match.viewTeam)}에게 오는 병력`:'내 본진으로 오는 병력'):'우리 본진으로 오는 적';
-  const b=inp.buf[inp.char];const c=checkTyped(b);const valid=c.valid;
+  $('chipO').classList.toggle('on',inp.char==='O');$('chipS').classList.toggle('on',inp.char==='S');$('chipM').classList.toggle('on',inp.char==='M');
+  {const T=v.teams[match.viewTeam];$('manaFill').style.width=`${T.mana/MANA_MAX*100}%`;$('manaNum').textContent=`${Math.floor(T.mana)} / ${MANA_MAX}`;$('manaLbl').textContent=match.M.ffa?(spectating()?`${teamName(match.viewTeam)} 마나`:'내 마나'):'팀 마나';}
+  $('rosterBoard').classList.toggle('focus',inp.char!=='S');$('threatBoard').classList.toggle('focus',inp.char==='S');$('threatBoard').querySelector('h3 span').textContent=match.M.ffa?(spectating()?`${teamName(match.viewTeam)}에게 오는 병력`:'내 본진으로 오는 병력'):'우리 본진으로 오는 적';
+  const b=inp.buf[inp.char];const c=inp.check(inp.char);const valid=c.valid;
   if(inp.dead()&&spectating()){$('tlLab').textContent='관전';$('tlTxt').innerHTML=`<span style="font-size:16px"><b style="color:${teamColor(match.viewTeam)}">${esc(teamName(match.viewTeam))}</b> 관전 중 · <kbd>Tab</kbd> 다른 플레이어 보기</span>`;}
-  else{$('tlTxt').innerHTML=typedView(inp.tb[inp.char],c.ok)+(inp.pending?'<span class="muted"> ␣</span>':'');$('tlLab').textContent=inp.char==='O'?'장교':'주술사';}
-  const full=UNITS.find(u=>u.keys===b);const tl=$('typeline');
+  else{$('tlTxt').innerHTML=typedView(inp.tb[inp.char],c.ok)+(inp.pending?'<span class="muted"> ␣</span>':'');$('tlLab').textContent=CHAR_LABEL[inp.char];}
+  const full=inp.fullOf(inp.char);const tl=$('typeline');
   const absent=inp.char==='S'&&b&&valid&&!inp.target();
   tl.classList.toggle('ready',!!full&&!absent);tl.classList.toggle('bad',!valid);
   if(performance.now()-inp.shakeAt<260)tl.classList.add('shake');else tl.classList.remove('shake');
@@ -1008,12 +1193,26 @@ function updateHud(){
   else if(!valid){h='오타가 있습니다. 빨간 글자가 사라질 때까지 백스페이스로 지우세요';warn=true;}
   else if(absent){h='우리 본진으로 오는 적 중에 이렇게 시작하는 이름이 없습니다';warn=true;}
   else if(inp.char==='O')h=full?(inp.pending?'스페이스를 한 번 더 (또는 Enter) 누르면 출격':'스페이스 두 번 또는 Enter로 출격'):'병력 이름을 치고 스페이스 두 번 또는 Enter를 누르면 출격합니다';
-  else h=full?(inp.pending?'스페이스를 한 번 더 (또는 Enter) 누르면 요격':'스페이스 두 번 또는 Enter로 요격'):'오는 적의 이름을 치고 스페이스 두 번 또는 Enter를 누르면 요격합니다. 청록색 테두리는 팀원이 노리는 적입니다';
+  else if(inp.char==='M'){const nm=full?SPELLS[full.id].name:'';h=full?(inp.pending?`스페이스를 한 번 더 (또는 Enter) 누르면 ${nm} 발동`:`스페이스 두 번 또는 Enter로 ${nm} 발동`):'주문을 영어로 치고 스페이스 두 번 또는 Enter를 누르면 발동합니다. 주문은 위 마법 카드에 있습니다';}
+  else if(full&&full.lv)h=inp.pending?'스페이스를 한 번 더 (또는 Enter) 누르면 배리어 해제':'스페이스 두 번 또는 Enter로 가장 가까운 배리어 하나 해제';
+  else h=full?(inp.pending?'스페이스를 한 번 더 (또는 Enter) 누르면 요격':'스페이스 두 번 또는 Enter로 요격'):'오는 적의 이름을 치고 스페이스 두 번 또는 Enter를 누르면 요격합니다. 배리어가 걸린 적은 해제 문구부터 치세요';
   $('hint').textContent=h;$('hint').classList.toggle('warn',warn);
 }
 function updateBoards(){
   if(!match)return;const v=match.view,me=viewSeat(),myT=match.viewTeam,spec=spectating();const P=v.players[me];const inp=match.input;
   hudHtml();
+  const magic=!spec&&inp.char==='M';
+  $('rosterBoard').querySelector('.rs-head span').textContent=magic?'마법 카드 · 주문을 치고 Space 두 번 또는 Enter':'장교 명부 · 뽑을 수 있는 병력';
+  if(magic){
+    const T=v.teams[myT],mb=inp.buf.M;
+    $('roster').innerHTML=SPELL_IDS.map(id=>{
+      const S=SPELLS[id],lv=P.spl[id],txt=spellText(id,lv),ok=T.mana>=S.cost;
+      const n=mb&&txt.startsWith(mb)?mb.length:0;
+      const en=n?`<span class="hit">${esc(txt.slice(0,n))}</span>${esc(txt.slice(n))}`:esc(txt);
+      const lvTxt=S.max>1?`Lv ${lv}${lv>=S.max?' (최대)':''}`:'숙련도 없음';
+      return`<div class="ucard${ok?'':' nomana'}"><span class="cost">${S.cost}</span><div class="nm"><b>${S.name}</b> <span class="sub">${lvTxt}</span><div class="en">${en}</div><div class="sub">${esc(spellKo(id,lv))} · ${spellDesc(id,lv,match.M,match.roomLv)}</div></div><span class="st${ok?' ok':''}">${ok?'사용 가능':'마나 부족'}</span></div>`;
+    }).join('');
+  } else {
   const ob=!spec&&inp.char==='O'?inp.buf.O:'';
   $('roster').innerHTML=UNITS.map(u=>{
     const why=v.canSummon(me,u);const n=ob&&u.keys.startsWith(ob)?matchedChars(u.name,ob):0;
@@ -1021,6 +1220,7 @@ function updateBoards(){
     const st=why==='locked'?'잠김':why==='dead'?'—':'출격 가능';
     return`<div class="ucard${why==='locked'?' locked':''}"><span class="tier t${u.tier}">${u.tier}급</span><div class="nm">${nm}<div class="sub">${u.g}글자 · 피해 ${u.g} · 이동 ${v.travel(u.k).toFixed(1)}초</div></div><span class="st${why?'':' ok'}">${st}</span></div>`;
   }).join('');
+  }
   const who=spec?`${teamName(myT)} · `:'';
   if(P.tier<5){const req=UNLOCK_ORIG[P.tier+1];$('nextUnlock').textContent=who+`${P.tier+1}급 해금까지: `+Object.entries(req).map(([t,n])=>`${t}급 ${Math.min(P.counts[t],need(n,v.uf))}/${need(n,v.uf)}`).join(' · ');}
   else $('nextUnlock').textContent=who+'전 등급 해금';
@@ -1032,7 +1232,8 @@ function updateBoards(){
     const isT=tgt&&tgt.id===u.id;const n=isT?matchedChars(u.name,sb):0;
     const nm=n?`<span class="hit">${esc(u.name.slice(0,n))}</span>${esc(u.name.slice(n))}`:esc(u.name);
     const from=match.M.ffa?` · 보낸 사람 <b style="color:${teamColor(u.ft)}">${esc(teamName(u.ft))}</b>${u.nco?' (부사관)':''}`:'';
-    return`<div class="row"><span class="tier t${u.tier}">${u.tier}급</span><div class="nm">${u.nco&&!match.M.ffa?'<span style="color:var(--nco)">부사관 · </span>':''}${nm}<div class="sub">피해 ${u.g}${from}${aimBy[u.id]?` · <span class="aimtag">${esc(aimBy[u.id])} 조준 중</span>`:''}</div></div><span class="st num">${((1-u.p)*u.T).toFixed(1)}초</span></div>`;
+    const barTxt=u.bar?` · <b style="color:#9ad0ff">배리어 ${u.bar}단계 "${BARRIER_PHRASES[u.bar-1].name}"</b>`:'';
+    return`<div class="row"><span class="tier t${u.tier}">${u.tier}급</span><div class="nm">${u.nco&&!match.M.ffa?'<span style="color:var(--nco)">부사관 · </span>':''}${nm}<div class="sub">피해 ${u.g}${barTxt}${from}${aimBy[u.id]?` · <span class="aimtag">${esc(aimBy[u.id])} 조준 중</span>`:''}</div></div><span class="st num">${((1-u.p)*u.T).toFixed(1)}초</span></div>`;
   }).join('')+(inc.length>10?`<div class="empty">그 밖에 ${inc.length-10}기</div>`:''):'<div class="empty">지금은 오는 적이 없습니다</div>';
 }
 
@@ -1048,10 +1249,10 @@ function renderResult(d,won,rank,rec){
   const teamLbl=ti=>M.ffa?`${order.indexOf(ti)+1}위`:(ti===match.myTeam?'우리 팀':'상대 팀');
   const ut=p=>[2,3,4,5].map(x=>p.unlockTime[x]!=null?fmtTime(p.unlockTime[x]):'—').join(' · ');
   const rows=d.players.map((p,i)=>({p,i})).sort((a,b)=>M.ffa?order.indexOf(a.p.team)-order.indexOf(b.p.team):a.p.team-b.p.team);
-  $('resTable').innerHTML=`<thead><tr><th>플레이어</th><th>${M.ffa?'순위':'팀'}</th><th>최고 등급</th><th>소환</th><th>보낸 글자</th><th>뚫은 글자</th><th>요격한 글자</th><th>부사관 요격</th><th>2·3·4·5급 해금</th><th>마나</th></tr></thead><tbody>`+
-    rows.map(({p,i})=>`<tr class="${i===match.mySeat?'me':''}"><td>${esc(p.name)}${match.seats[i].kind==='bot'?' <span class="muted">(봇)</span>':''}</td><td>${teamLbl(p.team)}</td><td>${p.tier}급</td><td class="num">${p.st.summons}</td><td class="num">${p.st.sent_g}</td><td class="num">${p.st.leaked_g}${p.st.sent_g?` (${Math.round(p.st.leaked_g/p.st.sent_g*100)}%)`:''}</td><td class="num">${p.st.int_g}</td><td class="num">${p.st.int_nco_g}</td><td class="num">${ut(p)}</td><td class="num">${Math.round(p.st.mana)}</td></tr>`).join('')+'</tbody>';
+  $('resTable').innerHTML=`<thead><tr><th>플레이어</th><th>${M.ffa?'순위':'팀'}</th><th>최고 등급</th><th>소환</th><th>보낸 글자</th><th>뚫은 글자</th><th>요격한 글자</th><th>부사관 요격</th><th>2·3·4·5급 해금</th><th>마법</th><th>번 마나</th></tr></thead><tbody>`+
+    rows.map(({p,i})=>`<tr class="${i===match.mySeat?'me':''}"><td>${esc(p.name)}${match.seats[i].kind==='bot'?' <span class="muted">(봇)</span>':''}</td><td>${teamLbl(p.team)}</td><td>${p.tier}급</td><td class="num">${p.st.summons}</td><td class="num">${p.st.sent_g}</td><td class="num">${p.st.leaked_g}${p.st.sent_g?` (${Math.round(p.st.leaked_g/p.st.sent_g*100)}%)`:''}</td><td class="num">${p.st.int_g}</td><td class="num">${p.st.int_nco_g}</td><td class="num">${ut(p)}</td><td class="num">${p.st.casts||0}</td><td class="num">${Math.round(p.st.mana+p.st.mana_nco)}</td></tr>`).join('')+'</tbody>';
   let note=rec.valid?`이번 판 실전 타수가 레이팅에 반영됐습니다. 현재 레이팅 ${Math.round(myRating())}타 (${ratingSource()}).`:'입력 시간이 1분 미만이거나 맞게 친 키가 200개 미만이라 레이팅에는 반영하지 않았습니다.';
-  note+=' 마나는 소환 글자당 1, 요격 글자당 1.25로 계산한 기록값이며 부사관 요격분은 따로 셉니다.';
+  note+='';
   if(user.guest)note+=' 게스트 기록은 이 창을 닫으면 사라집니다.';
   $('resNote').textContent=note;
   $('btnToRoom').hidden=!net.isHost;
@@ -1172,12 +1373,12 @@ function renderRoom(){
   const slotHtml=(s,i)=>{
     if(s.kind==='empty'){
       let ctl='';
-      if(host)ctl+=`<select data-k="${i}" aria-label="봇 실력"><option value="150">봇 150타</option><option value="300" selected>봇 300타</option><option value="700">봇 700타</option></select><select data-r="${i}" aria-label="봇 포지션"><option value="auto">포지션 자동</option><option value="O">장교</option><option value="S">주술사</option><option value="M" disabled>마법사 (준비 중)</option></select><button class="small" data-addbot="${i}">봇 넣기</button>`;
+      if(host)ctl+=`<select data-k="${i}" aria-label="봇 실력"><option value="150">봇 150타</option><option value="300" selected>봇 300타</option><option value="700">봇 700타</option></select><select data-r="${i}" aria-label="봇 포지션"><option value="auto">포지션 자동</option><option value="O">장교</option><option value="S">주술사</option><option value="M">마법사</option></select><button class="small" data-addbot="${i}">봇 넣기</button>`;
       if(myIdx>=0)ctl+=`<button class="small" data-move="${i}">이 자리로 이동</button>`;
       return`<div class="slot empty"><div class="who"><span class="muted">빈자리</span></div><div class="ctl">${ctl}</div></div>`;
     }
     if(s.kind==='bot'){
-      const ctl=host?`<select data-bk="${i}" aria-label="봇 실력">${[150,300,700].map(k=>`<option value="${k}" ${s.kpm===k?'selected':''}>${k}타</option>`).join('')}</select><select data-br="${i}" aria-label="봇 포지션">${['auto','O','S'].map(r=>`<option value="${r}" ${s.role===r?'selected':''}>${r==='auto'?'포지션 자동':ROLE_LABEL[r]}</option>`).join('')}<option disabled>마법사 (준비 중)</option></select><button class="small danger" data-rmbot="${i}">봇 빼기</button>`:'';
+      const ctl=host?`<select data-bk="${i}" aria-label="봇 실력">${[150,300,700].map(k=>`<option value="${k}" ${s.kpm===k?'selected':''}>${k}타</option>`).join('')}</select><select data-br="${i}" aria-label="봇 포지션">${['auto','O','S','M'].map(r=>`<option value="${r}" ${s.role===r?'selected':''}>${r==='auto'?'포지션 자동':ROLE_LABEL[r]}</option>`).join('')}</select><button class="small danger" data-rmbot="${i}">봇 빼기</button>`:'';
       return`<div class="slot"><div class="who"><b>봇 ${s.kpm}타</b><span class="tag">${s.role==='auto'?'포지션 자동':ROLE_LABEL[s.role]}</span></div><div class="ctl">${ctl}</div></div>`;
     }
     const mine=s.pid===net.myPid();
@@ -1353,7 +1554,7 @@ const net={
     else if(d.t==='leave'){this.guestGone(c.peer,'나갔습니다');}
     else if(match&&match.role==='host'&&match.state==='run'){
       const seat=match.seats.findIndex(s=>s.pid===c.peer);if(seat<0)return;
-      if(d.t==='act'){if(d.a==='summon'){const why=match.engine.summon(seat,d.name);if(why==='locked')c.send({t:'rej',why});}else if(d.a==='intercept')match.engine.intercept(seat,d.name);}
+      if(d.t==='act'){const e=match.engine;if(d.a==='summon'){const why=e.summon(seat,d.name);if(why==='locked')c.send({t:'rej',why});}else if(d.a==='intercept')e.intercept(seat,d.name);else if(d.a==='unbarrier')e.unbarrier(seat,+d.name);else if(d.a==='cast'){const why=e.cast(seat,d.name);if(why==='mana')c.send({t:'rej',why});}}
       else if(d.t==='aim'){if(d.id===null)delete match.engine.aims[seat];else match.engine.aims[seat]=d.id;}
       else if(d.t==='kpm'){match.engine.players[seat].kpm=+d.v||0;}
     }
@@ -1370,7 +1571,7 @@ const net={
   },
   hostAction(a){
     const room=this.room;if(!this.isHost||!room||room.state!=='waiting')return;const s=room.slots[a.i];if(!s)return;
-    if(a.a==='addbot'&&s.kind==='empty'){room.slots[a.i]={kind:'bot',kpm:a.kpm,role:a.role==='M'?'auto':a.role};}
+    if(a.a==='addbot'&&s.kind==='empty'){room.slots[a.i]={kind:'bot',kpm:a.kpm,role:a.role};}
     else if(a.a==='rmbot'&&s.kind==='bot'){room.slots[a.i]={kind:'empty'};}
     else if(a.a==='setbot'&&s.kind==='bot'){if(a.kpm)s.kpm=a.kpm;if(a.role)s.role=a.role;}
     else if(a.a==='kick'&&s.kind==='human'&&!s.host){
@@ -1425,7 +1626,7 @@ const net={
     if(d.t==='start'){const M=modeOf(d.modeKey,d.n);beginMatch({role:'guest',roomLv:d.roomLv,seats:d.seats,M,mySeat:d.seats.findIndex(s=>s.pid===this.self.id)});return;}
     if(!match||match.role!=='guest')return;
     if(d.t==='snap')match.view.apply(d);
-    else if(d.t==='rej')match.input.flash('아직 잠겨 있습니다');
+    else if(d.t==='rej')match.input.flash(d.why==='mana'?'마나가 부족합니다':'아직 잠겨 있습니다');
     else if(d.t==='end')endMatch(d);
   },
   hostLost(why){
