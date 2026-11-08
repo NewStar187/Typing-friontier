@@ -1131,29 +1131,24 @@ function drawMiniRing(ox,oy,S){
 function draw(){
   const W=cv.clientWidth,H=cv.clientHeight;if(!W)return;
   ctx.clearRect(0,0,W,H);ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
-  // 개인 난전: 위쪽은 내 본진으로 오는 병력(크게), 아래쪽은 받는 사람별 길로 나뉜 내가 보낸 병력,
-  // 전체 원형 맵은 왼쪽 위 미니맵
+  // 개인 난전: 위쪽 절반은 내 본진으로 오는 병력(크게), 아래쪽 절반은 내가 보낸 병력, 전체 원형 맵은 왼쪽 위 미니맵
   const ffa=!!(match&&match.M.ffa),MM=ffa?Math.round(Math.min(H*0.46,200,W*0.2)):0;
-  const OBW=Math.min(110,W*0.085),BW=ffa?MM:OBW,L=BW+12,R=W-OBW-12,mid=H/2,SY=ffa?Math.round(H*0.6):mid;
+  const OBW=Math.min(110,W*0.085),BW=ffa?MM:OBW,L=BW+12,R=W-OBW-12,mid=H/2,SY=mid;
   const FS=ffa?Math.round(Math.max(16,Math.min(20,H/22))):Math.round(Math.max(13,Math.min(17,H/34))),RH=FS+14;
   ctx.strokeStyle=C.grid;ctx.lineWidth=1;
   for(let i=1;i<10;i++){const x=L+(R-L)*i/10;ctx.beginPath();ctx.moveTo(x,24);ctx.lineTo(x,H-8);ctx.stroke();}
-  ctx.strokeStyle=C.line;ctx.setLineDash([6,6]);ctx.beginPath();ctx.moveTo(L,SY);ctx.lineTo(ffa?W-4:R,SY);ctx.stroke();ctx.setLineDash([]);
+  ctx.strokeStyle=C.line;ctx.setLineDash([6,6]);ctx.beginPath();ctx.moveTo(L,SY);ctx.lineTo(R,SY);ctx.stroke();ctx.setLineDash([]);
   if(!match)return;
   const v=match.view,M=match.M,myT=match.viewTeam,me=viewSeat(),spec=spectating();
   ctx.font=`12px ${FONT}`;ctx.fillStyle=C.muted;ctx.textAlign='left';
   ctx.fillText(M.ffa?`◀ ${spec?teamName(myT)+'의':'내'} 본진으로 오는 병력 · 이름 옆 색과 ◂ 표시가 보낸 사람`:'◀ 우리 본진으로 오는 적',L+4,17);
-  if(!ffa){ctx.textAlign='right';ctx.fillText('우리 팀이 보낸 병력 ▶',R-4,H-8);}
+  ctx.textAlign='right';ctx.fillText(M.ffa?`${spec?teamName(myT)+' →':'내가'} 보낸 병력 · → 받는 사람 ▶`:'우리 팀이 보낸 병력 ▶',R-4,H-8);
   const base=(x,y,h,ti,col,label,big,BW=OBW)=>{
     const T=v.teams[ti],hpr=Math.max(0,T.hp)/M.hp;
     ctx.fillStyle=C.grid;ctx.fillRect(x,y,BW,h);
     ctx.fillStyle=T.alive?col:C.dead;ctx.globalAlpha=0.22;ctx.fillRect(x,y+h*(1-hpr),BW,h*hpr);ctx.globalAlpha=1;
     const f=flash[ti]||0;if(f>0){ctx.fillStyle=C.enemy;ctx.globalAlpha=Math.min(0.5,f);ctx.fillRect(x,y,BW,h);ctx.globalAlpha=1;}
     ctx.strokeStyle=T.alive?col:C.dead;ctx.lineWidth=2;ctx.strokeRect(x+1,y+1,BW-2,h-2);
-    if(h<52){ // 낮은 칸: 이름과 체력을 한 줄로
-      if(T.alive&&T.shield){ctx.strokeStyle=C.bar;ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.strokeRect(x+4,y+4,BW-8,h-8);ctx.setLineDash([]);}
-      ctx.textAlign='left';ctx.font=`bold 11px ${FONT}`;ctx.fillStyle=T.alive?col:C.muted;ctx.fillText(label,x+7,y+h/2+1,BW-44);
-      ctx.textAlign='right';ctx.font=`bold 15px ${FONT}`;ctx.fillStyle=T.alive?C.fg:C.muted;ctx.fillText(T.alive?Math.ceil(T.hp):'탈락',x+BW-7,y+h/2+1);return;}
     ctx.textAlign='center';ctx.fillStyle=T.alive?C.fg:C.muted;ctx.font=`bold ${big?30:18}px ${FONT}`;
     ctx.fillText(T.alive?Math.ceil(T.hp):'탈락',x+BW/2,y+h/2+(big?10:6));
     ctx.font=`bold ${big?12:12}px ${FONT}`;ctx.fillStyle=T.alive?col:C.muted;ctx.fillText(label,x+BW/2,y+h/2-(big?24:14),BW-6);
@@ -1161,31 +1156,20 @@ function draw(){
   };
   if(ffa)base(2,MM+16,H-MM-24,myT,teamColor(myT),spec?teamName(myT):'내 본진',true,BW);
   else base(2,8,H-16,myT,teamColor(myT),'우리 본진',true);
-  const opp=v.teams.map((t,i)=>i).filter(i=>i!==myT).sort((a,b)=>(a-myT+v.teams.length)%v.teams.length-(b-myT+v.teams.length)%v.teams.length);
-  const oppY={},stripY={};let sH=0;
-  if(ffa){ // 받는 사람마다 길 하나: 길 끝에 그 사람 본진 칸, 내가 보낸 병력은 그 길을 따라 본진 칸으로 들어간다
-    const gap=4;sH=(H-SY-14-(opp.length-1)*gap)/opp.length;
-    ctx.textBaseline='middle';
-    opp.forEach((ti,k)=>{const y=SY+8+k*(sH+gap),col=teamColor(ti),al=v.teams[ti].alive;stripY[ti]=y;oppY[ti]=y+sH/2;
-      ctx.fillStyle=al?col:C.dead;ctx.globalAlpha=0.07;ctx.fillRect(L,y,W-OBW-2-L,sH);ctx.globalAlpha=al?0.45:0.15;
-      ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=1.5;ctx.setLineDash([8,6]);ctx.beginPath();ctx.moveTo(L,y+sH/2);ctx.lineTo(W-OBW-12,y+sH/2);ctx.stroke();ctx.setLineDash([]);
-      ctx.beginPath();ctx.moveTo(W-OBW-14,y+sH/2-6);ctx.lineTo(W-OBW-5,y+sH/2);ctx.lineTo(W-OBW-14,y+sH/2+6);ctx.closePath();ctx.fill();ctx.globalAlpha=1;
-      base(W-OBW-2,y,sH,ti,col,teamName(ti),false);});
-    ctx.textBaseline='alphabetic';
-  }else{
-    const segH=(H-16-(opp.length-1)*6)/opp.length;
-    opp.forEach((ti,k)=>{const y=8+k*(segH+6);oppY[ti]=y+segH/2;base(W-OBW-2,y,segH,ti,teamColor(ti),'상대 본진',opp.length===1);});
-  }
+  const opp=v.teams.map((t,i)=>i).filter(i=>i!==myT);
+  const segH=(H-16-(opp.length-1)*6)/opp.length;
+  const oppY={};
+  opp.forEach((ti,k)=>{const y=8+k*(segH+6);oppY[ti]=y+segH/2;base(W-OBW-2,y,segH,ti,teamColor(ti),M.ffa?teamName(ti):'상대 본진',opp.length===1);});
   const tgt=spec?null:match.input.target();const buf=match.input.buf.S;
   const phB=!spec&&match.input.char==='S'&&buf?BARRIER_PHRASES.find(p=>p.keys.startsWith(buf)):null;
   const tuT=v.teams[myT].turret;let tuPos=null;
   const aimBy={};for(const [p,id] of Object.entries(v.aims||{}))if(+p!==me&&v.players[p]&&v.players[p].team===myT)aimBy[id]=v.players[p].name;
-  const rows=Math.max(1,Math.floor(((ffa?SY-30:mid)-40)/RH));
-  // 난전에서 내가 보낸 병력은 길 높이에 맞춘 작은 글씨
-  const FSs=ffa?Math.max(11,Math.min(FS-3,Math.floor(sH-10))):FS,RHs=FSs+10,rowsS=ffa?Math.max(1,Math.floor(sH/RHs)):rows;
-  const uFS=t=>t||!ffa?FS:FSs,uH=t=>t||!ffa?RH-6:RHs-4;
+  const rows=Math.max(1,Math.floor((mid-40)/RH));
+  // 난전에서 내가 보낸 병력은 다른 모드와 같은 크기의 글씨
+  const FSs=ffa?Math.round(Math.max(13,Math.min(17,H/34))):FS,RHs=FSs+14,rowsS=Math.max(1,Math.floor((mid-40)/RHs));
+  const uFS=t=>t||!ffa?FS:FSs,uH=t=>t||!ffa?RH-6:RHs-6;
   const list=[...v.units].filter(u=>u.tt===myT||u.ft===myT).sort((a,b)=>a.p-b.p);
-  const laneK=u=>u.tt===myT?'in':ffa?'t'+u.tt:'out',nRows=k=>k==='in'||!ffa?rows:rowsS;
+  const laneK=u=>u.tt===myT?'in':'out',nRows=k=>k==='in'?rows:rowsS;
   const rowLast={},RL=k=>rowLast[k]||(rowLast[k]=new Array(nRows(k)).fill(1));
   for(const u of list){const r=rowOf.get(u.id),k=laneK(u);if(r!==undefined&&r<nRows(k))RL(k)[r]=Math.min(RL(k)[r],u.p);}
   const seen=new Set();ctx.textBaseline='middle';
@@ -1193,14 +1177,14 @@ function draw(){
     seen.add(u.id);const toMe=u.tt===myT,k=laneK(u),nr=nRows(k);const FS=uFS(toMe),hh=uH(toMe);
     let row=rowOf.get(u.id);
     if(row===undefined||row>=nr){const a=RL(k);let best=0;for(let r=1;r<nr;r++)if(a[r]>a[best])best=r;row=best;rowOf.set(u.id,row);a[row]=u.p;}
-    const y=toMe?30+row*RH+RH/2:ffa?stripY[u.tt]+(sH-nr*RHs)/2+row*RHs+RHs/2:mid+12+row*RH+RH/2;
+    const y=toMe?30+row*RH+RH/2:mid+12+row*RHs+RHs/2;
     ctx.font=`${FS}px ${FONT}`;
     // 난전: 오는 병력엔 보낸 사람, 보내는 병력엔 받는 사람을 그 사람 색으로
     const other=M.ffa?(toMe?u.ft:u.tt):null;const ocol=other!==null?teamColor(other):null;
-    const fast=(u.spd||1)>1.01;const pre=(u.nco?'부 ':'')+(fast?'» ':'');const suf=other!==null&&toMe?` ◂ ${teamName(other)}`:'';const cntT=(u.cnt||1)>1?` ×${u.cnt}`:'';
+    const fast=(u.spd||1)>1.01;const pre=(u.nco?'부 ':'')+(fast?'» ':'');const suf=other!==null?(toMe?` ◂ ${teamName(other)}`:` → ${teamName(other)}`):'';const cntT=(u.cnt||1)>1?` ×${u.cnt}`:'';
     ctx.font=`${FS}px ${FONT}`;const nw=ctx.measureText(pre+u.name).width;ctx.font=`bold ${FS-1}px ${FONT}`;const sw=(suf?ctx.measureText(suf).width:0)+(cntT?ctx.measureText(cntT).width:0);ctx.font=`${FS}px ${FONT}`;
     const tw=nw+sw+18;
-    let x0,x1;if(toMe){const hd=ffa?Math.min(R-(R-L)*u.p,W-4-tw):R-(R-L)*u.p;x0=hd;x1=hd+tw;}else{const hd=L+(R-L)*u.p;x1=hd;x0=hd-tw;}
+    let x0,x1;if(toMe){const hd=R-(R-L)*u.p;x0=hd;x1=hd+tw;}else{const hd=L+(R-L)*u.p;x1=hd;x0=hd-tw;}
     const isT=tgt&&tgt.id===u.id,mate=toMe&&aimBy[u.id],isTu=toMe&&tuT&&tuT.tid===u.id;
     const mine=!toMe&&u.fp===me;
     ctx.fillStyle=isT?'#2a2414':mate?'#11292a':'#0e141c';ctx.globalAlpha=0.93;rr(x0,y-hh/2,tw,hh,5);ctx.fill();ctx.globalAlpha=1;
@@ -1209,7 +1193,6 @@ function draw(){
     if(u.bar){ctx.strokeStyle=C.bar;ctx.lineWidth=1.5;rr(x0-3,y-hh/2-3,tw+6,hh+6,7);ctx.stroke();}
     if(isTu){ctx.strokeStyle=C.tur;ctx.lineWidth=1.5;ctx.setLineDash([2,3]);rr(x0-5,y-hh/2-5,tw+10,hh+10,8);ctx.stroke();ctx.setLineDash([]);tuPos={x:x0,y};}
     ctx.fillStyle=TIERC[u.tier];ctx.fillRect(toMe?x0:x1-4,y-hh/2,4,hh);
-    if(ffa&&!toMe){ctx.fillStyle=ocol;ctx.beginPath();ctx.moveTo(x1+2,y-hh/2+1);ctx.lineTo(x1+10,y);ctx.lineTo(x1+2,y+hh/2-1);ctx.closePath();ctx.fill();}
     ctx.textAlign='left';let tx=x0+9;
     if(u.nco){ctx.fillStyle=C.nco;ctx.fillText('부 ',tx,y+1);tx+=ctx.measureText('부 ').width;}
     if(fast){ctx.fillStyle=C.acc;ctx.fillText('» ',tx,y+1);tx+=ctx.measureText('» ').width;}
