@@ -317,10 +317,10 @@ table.stats tr.me td{color:var(--brass)}
         <div class="seg" id="visSeg"><button data-vis="public" class="on">공개방</button><button data-vis="private">비밀방</button></div>
         <p id="visDesc">공개방은 메인 로비의 방 목록에 올라갑니다.</p>
         <div class="modes" id="modeBtns">
-          <button class="mode on" data-mode="1v1"><b>1 대 1</b><span>본진 체력 100</span></button>
-          <button class="mode" data-mode="2v2"><b>2 대 2</b><span>팀 공동 본진 200</span></button>
-          <button class="mode" data-mode="3v3"><b>3 대 3</b><span>팀 공동 본진 300</span></button>
-          <button class="mode" data-mode="ffa"><b>개인 난전</b><span>각자 본진 100 · <select id="ffaN" aria-label="난전 인원"><option value="3">3명</option><option value="4" selected>4명</option><option value="5">5명</option><option value="6">6명</option></select></span></button>
+          <button class="mode on" data-mode="1v1"><b>1 대 1</b><span>본진 체력 50</span></button>
+          <button class="mode" data-mode="2v2"><b>2 대 2</b><span>팀 공동 본진 100</span></button>
+          <button class="mode" data-mode="3v3"><b>3 대 3</b><span>팀 공동 본진 150</span></button>
+          <button class="mode" data-mode="ffa"><b>개인 난전</b><span>각자 본진 50 · <select id="ffaN" aria-label="난전 인원"><option value="3">3명</option><option value="4" selected>4명</option><option value="5">5명</option><option value="6">6명</option></select></span></button>
         </div>
         <label class="field">방 제목<input id="roomTitle" maxlength="24"></label>
         <div class="btns"><button class="primary" id="btnCreate">방 만들기</button><span class="status" id="createMsg"></span></div>
@@ -415,12 +415,13 @@ const PLACEMENT_TEXTS = [
 const TRAVEL_BASE = 7, TRAVEL_PER_KEY = 0.68;
 // 난전 공격 분배: 이 비율만큼은 레이팅에 비례, 나머지는 모두에게 똑같이
 const FFA_RATING_SHARE = 0.5;
-const SD_SOFT = 300, SD_HARD = 420, HARD_CAP = 900, ACTIVE_GAP = 1.5;
+// 서든데스: 2분 30초가 지나고 모두 3급 이상이면, 또는 3분 30초가 되면 시작. 부사관은 30초마다 다음 단계
+const SD_SOFT = 150, SD_HARD = 210, NCO_STEP = 30, HARD_CAP = 900, ACTIVE_GAP = 1.5;
 const MODES = {
-  '1v1': { key:'1v1', label:'1 대 1', teams:2, size:1, hp:100 },
-  '2v2': { key:'2v2', label:'2 대 2', teams:2, size:2, hp:200 },
-  '3v3': { key:'3v3', label:'3 대 3', teams:2, size:3, hp:300 },
-  'ffa': { key:'ffa', label:'개인 난전', ffa:true, size:1, hp:100 },
+  '1v1': { key:'1v1', label:'1 대 1', teams:2, size:1, hp:50 },
+  '2v2': { key:'2v2', label:'2 대 2', teams:2, size:2, hp:100 },
+  '3v3': { key:'3v3', label:'3 대 3', teams:2, size:3, hp:150 },
+  'ffa': { key:'ffa', label:'개인 난전', ffa:true, size:1, hp:50 },
 };
 function modeOf(key,n){ const m=Object.assign({},MODES[key]); if(m.ffa){m.teams=n;m.label=`개인 난전 ${n}인`;} return m; }
 const BOT_PROFILES = [ // 타수 사이 값은 보간
@@ -552,7 +553,7 @@ async function hashPw(id,pw){
 /* =====================================================================
    해금
    ===================================================================== */
-const UNLOCK_ORIG=[null,null,{1:10},{1:10,2:5},{1:15,2:10,3:5},{4:5}];
+const UNLOCK_ORIG=[null,null,{1:5},{1:5,2:3},{1:8,2:5,3:3},{4:3}];
 const need=(n,uf)=>Math.max(1,Math.round(n*uf));
 function unlockedTier(counts,uf){let t=1;while(t<5){const req=UNLOCK_ORIG[t+1];if(Object.entries(req).every(([tt,n])=>counts[tt]>=need(n,uf)))t++;else break;}return t;}
 function neededTier(counts,tier,uf){if(tier>=5)return null;const req=UNLOCK_ORIG[tier+1];let best=null;for(const [tt,n] of Object.entries(req))if(counts[tt]<need(n,uf)&&(best===null||+tt>best))best=+tt;return best;}
@@ -598,9 +599,10 @@ function spellDesc(id,lv,M,roomLv){
 function mkPS(){return{tier:1,counts:{1:0,2:0,3:0,4:0,5:0},unlockTime:{},spl:{barrier:1,accel:1,heal:1,shield:1,turret:1},st:{sent_g:0,leaked_g:0,int_g:0,int_nco_g:0,mana:0,mana_nco:0,summons:0,casts:0,unbar:0}};}
 function ncoPhaseOf(sd,time){
   if(sd===null)return null;const el=time-sd;
-  if(el<60)return{n:1,rate:300,tiers:[1],left:60-el};
-  if(el<120)return{n:2,rate:400,tiers:[1,2],left:120-el};
-  if(el<180)return{n:3,rate:500,tiers:[1,2,3],left:180-el};
+  const a=NCO_STEP;
+  if(el<a)return{n:1,rate:300,tiers:[1],left:a-el};
+  if(el<2*a)return{n:2,rate:400,tiers:[1,2],left:2*a-el};
+  if(el<3*a)return{n:3,rate:500,tiers:[1,2,3],left:3*a-el};
   return{n:4,rate:700,tiers:[1,2,3,4],left:null};
 }
 class Engine{
