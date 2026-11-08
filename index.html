@@ -74,7 +74,7 @@ canvas#field{display:block;position:absolute;inset:0;width:100%;height:100%}
 .rs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px}
 .ucard{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);font-size:13px;line-height:1.35}
 .ucard.locked{opacity:.38}
-.ucard .nm{min-width:0}
+.ucard .nm{min-width:0;word-break:keep-all}
 .ucard .nm .hit{color:var(--brass)}
 .ucard .sub{font-size:11px;color:var(--muted)}
 .ucard .st{font-size:11px;white-space:nowrap;color:var(--muted)}
@@ -389,11 +389,11 @@ table.stats tr.me td{color:var(--brass)}
    ===================================================================== */
 // 병력 이름 목록. 등급은 공백 제외 글자 수로 자동 결정(1~5 / 6~10 / 11~15 / 16~20 / 21+).
 const UNIT_NAMES = [
-  '배고픈 졸병', '졸린 궁수', '작은 창병',
-  '의욕 없는 늙은 기사',
-  '녹슨 갑옷을 입은 성난 돌격 기병',
-  '느릿느릿 기어오는 거대한 거북 등껍질 전차',
-  '엄마한테 혼나고 홧김에 입대한 세상에서 제일 억울한 공성 골렘',
+  '허재석', '새별오름', '쿠콱쿠우콱',
+  '보지말자지금부터', '천풍신도 백랑',
+  '뚱녀가 너무 싫은 꼴초해랑',
+  '북한산 가서 최인서 밀고싶었던 김대희',
+  '오창고등학교의 전설 왼손은 수면제 오른손은 황천길 최인서',
 ];
 const PLACEMENT_TEXTS = [
   '푸른 하늘 아래 작은 마을에 오래된 종탑이 서 있었다',
