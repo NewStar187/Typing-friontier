@@ -561,6 +561,8 @@ function neededTier(counts,tier,uf){if(tier>=5)return null;const req=UNLOCK_ORIG
 /* =====================================================================
    마법
    ===================================================================== */
+// 같은 이름 합류: 같은 사람이 보낸 같은 1급 병력이 아직 경로의 이 비율 안쪽에 있으면 한 덩어리로 합친다
+const MERGE_RANGE = 0.10;
 const MANA_MAX = 500, MANA_SUMMON = 1, MANA_INTERCEPT = 1.25;
 const SPELLS = {
   barrier:{ name:'배리어', cost:100, max:3,
@@ -634,12 +636,14 @@ class Engine{
   }
   spawn(fp,ft,u,nco){
     const tt=this.pickTarget(ft);if(tt===null)return;
-    this.units.push({id:this.nid++,fp,ft,tt,name:u.name,keys:u.keys,k:u.k,g:u.g,tier:u.tier,T:this.travel(u.k),p:0,nco,alive:true,bar:0,spd:1});
+    this.units.push({id:this.nid++,fp,ft,tt,name:u.name,keys:u.keys,k:u.k,g:u.g,tier:u.tier,T:this.travel(u.k),p:0,nco,alive:true,bar:0,spd:1,cnt:1});
   }
   summon(pi,name){
     const u=UNIT_BY_NAME[name];if(!u||this.over)return'invalid';
     const why=this.canSummon(pi,u);if(why)return why;
-    const P=this.players[pi];this.spawn(pi,P.team,u,false);
+    const P=this.players[pi];
+    const near=u.tier===1?this.units.find(x=>x.alive&&x.fp===pi&&!x.nco&&x.name===u.name&&x.p<=MERGE_RANGE):null;
+    if(near)near.cnt++;else this.spawn(pi,P.team,u,false);
     P.counts[u.tier]++;P.st.summons++;P.st.sent_g+=u.g;P.st.mana+=u.g*MANA_SUMMON;this.gain(P.team,u.g*MANA_SUMMON);
     const nt=unlockedTier(P.counts,this.uf);
     if(nt>P.tier){for(let t=P.tier+1;t<=nt;t++)P.unlockTime[t]=this.time;P.tier=nt;}
@@ -650,8 +654,8 @@ class Engine{
     const team=this.players[pi].team;if(!this.teams[team].alive)return null;let best=null;
     for(const u of this.units)if(u.alive&&u.tt===team&&u.name===name&&!u.bar&&(!best||u.p>best.p))best=u;
     if(!best)return null;
-    best.alive=false;const P=this.players[pi],amt=best.g*MANA_INTERCEPT;
-    if(best.nco){P.st.int_nco_g+=best.g;P.st.mana_nco+=amt;}else{P.st.int_g+=best.g;P.st.mana+=amt;}
+    best.alive=false;const P=this.players[pi],gg=best.g*(best.cnt||1),amt=gg*MANA_INTERCEPT;
+    if(best.nco){P.st.int_nco_g+=gg;P.st.mana_nco+=amt;}else{P.st.int_g+=gg;P.st.mana+=amt;}
     this.gain(team,amt);
     return best;
   }
@@ -731,9 +735,9 @@ class Engine{
       if(u.p>=1){
         u.alive=false;u.p=1;const T=this.teams[u.tt];
         if(T.alive){
-          let dmg=u.g*this.dmgMult;
+          const gg=u.g*(u.cnt||1);let dmg=gg*this.dmgMult;
           if(T.shield){const a=Math.min(T.shield.hp,dmg);T.shield.hp-=a;dmg-=a;if(T.shield.hp<=1e-6)T.shield=null;}
-          T.hp=Math.max(0,T.hp-dmg);if(u.nco)T.nco_hit_g+=u.g;else this.players[u.fp].st.leaked_g+=u.g;
+          T.hp=Math.max(0,T.hp-dmg);if(u.nco)T.nco_hit_g+=gg;else this.players[u.fp].st.leaked_g+=gg;
         }
       }
     }
@@ -754,7 +758,7 @@ class Engine{
         t.shield?[+t.shield.hp.toFixed(1),+t.shield.max.toFixed(1),+(t.shield.until-this.time).toFixed(1),t.shield.lv]:0,
         t.turret?[t.turret.lv,+(t.turret.until-this.time).toFixed(1),t.turret.n,t.turret.tid,+t.turret.prog.toFixed(2),+t.turret.rate.toFixed(3)]:0,t.tkills]),
       P:this.players.map(p=>[p.tier,p.counts,Math.round(p.kpm||0),SPELL_IDS.map(id=>p.spl[id])]),
-      u:this.units.map(u=>[u.id,u.fp,u.ft,u.tt,UNIT_BY_NAME[u.name].i,+u.p.toFixed(4),+u.T.toFixed(3),u.nco?1:0,u.bar,+(u.spd||1).toFixed(2)]),
+      u:this.units.map(u=>[u.id,u.fp,u.ft,u.tt,UNIT_BY_NAME[u.name].i,+u.p.toFixed(4),+u.T.toFixed(3),u.nco?1:0,u.bar,+(u.spd||1).toFixed(2),u.cnt||1]),
       aims:this.aims};
   }
   endPayload(){
@@ -780,9 +784,9 @@ class GuestView{
     d.P.forEach(([tier,counts,kpm,spl],i)=>{const P=this.players[i];P.tier=tier;P.counts=counts;P.kpm=kpm||0;SPELL_IDS.forEach((id,j)=>P.spl[id]=spl[j]);});
     const prev=new Map(this.units.map(u=>[u.id,u]));
     this.units=d.u.filter(r=>!this.killed.has(r[0])).map(r=>{
-      const o=prev.get(r[0]);if(o){o.p=r[5];o.bar=r[8];o.spd=r[9];return o;}
+      const o=prev.get(r[0]);if(o){o.p=r[5];o.bar=r[8];o.spd=r[9];o.cnt=r[10]||1;return o;}
       const def=UNITS[r[4]];
-      return{id:r[0],fp:r[1],ft:r[2],tt:r[3],name:def.name,keys:def.keys,k:def.k,g:def.g,tier:def.tier,p:r[5],T:r[6],nco:!!r[7],alive:true,bar:r[8],spd:r[9]};
+      return{id:r[0],fp:r[1],ft:r[2],tt:r[3],name:def.name,keys:def.keys,k:def.k,g:def.g,tier:def.tier,p:r[5],T:r[6],nco:!!r[7],alive:true,bar:r[8],spd:r[9],cnt:r[10]||1};
     });
     for(const id of[...this.killed])if(!d.u.some(r=>r[0]===id))this.killed.delete(id);
     this.aims=d.aims||{};
@@ -820,7 +824,7 @@ class Bot{
   savable(t0,startChar){
     const inc=this.incoming().sort((a,b)=>(1-a.p)*a.T/(a.spd||1)-(1-b.p)*b.T/(b.spd||1));
     let t=t0+(startChar!=='S'?this.p.sd:0),saved=0,first=null;
-    for(const u of inc){const rem=(1-u.p)*u.T/(u.spd||1),d=this.est(this.cost(u)+(u.bar?u.k:0))+2/this.r*(u.bar?2:1)+this.p.rd;if(t+d<=rem-this.p.margin){t+=d;saved+=u.g;if(!first)first=u;}}
+    for(const u of inc){const rem=(1-u.p)*u.T/(u.spd||1),d=this.est(this.cost(u)+(u.bar?u.k:0))+2/this.r*(u.bar?2:1)+this.p.rd;if(t+d<=rem-this.p.margin){t+=d;saved+=u.g*(u.cnt||1);if(!first)first=u;}}
     return{saved,first,n:inc.length,inc};
   }
   tierOrder(){
@@ -1067,7 +1071,120 @@ function cycleSpectate(){
 const PCOL=['#ff6f61','#f4a259','#e3c84a','#b38cff','#ff7eb6','#56cfe1'];
 function teamColor(ti){if(!match.M.ffa)return ti===match.myTeam?C.ally:C.enemy;return ti===match.myTeam?C.ally:PCOL[ti%PCOL.length];}
 function teamName(ti){const p=match.view.players.find(x=>x.team===ti);return p?p.name:'';}
+
+// 개인 난전 원형 맵: 테두리에 본진, 가운데 작은 원형 광장, 광장에서 각 본진까지 벽으로 막힌 복도.
+// 병력은 보낸 사람 복도 → 광장 → 받는 사람 복도 순서로 움직인다(걸리는 시간은 다른 모드와 같다).
+function ringGeom(W,H,v,myT){
+  const n=v.teams.length,cx=W/2,cy=H/2,R=Math.min(W,H)/2-30,BR=Math.max(26,Math.min(44,R*0.15)),Rb=R-BR,Rp=R*0.24,cw=Math.max(34,R*0.12);
+  const ang=ti=>Math.PI/2+2*Math.PI*((ti-myT+n)%n)/n;
+  const at=(ti,r)=>{const a=ang(ti);return{x:cx+r*Math.cos(a),y:cy+r*Math.sin(a),a};};
+  return{n,cx,cy,R,BR,Rb,Rp,cw,ang,at};
+}
+function ringPos(G,u){
+  const B1=G.at(u.ft,G.Rb),M1=G.at(u.ft,G.Rp),M2=G.at(u.tt,G.Rp),B2=G.at(u.tt,G.Rb);
+  const l1=G.Rb-G.Rp,l2=Math.hypot(M2.x-M1.x,M2.y-M1.y),tot=2*l1+l2;let d=Math.min(1,Math.max(0,u.p))*tot;
+  let x,y,dx,dy;
+  if(d<=l1){const t=d/l1;x=B1.x+(M1.x-B1.x)*t;y=B1.y+(M1.y-B1.y)*t;dx=M1.x-B1.x;dy=M1.y-B1.y;}
+  else if(d<=l1+l2){const t=(d-l1)/Math.max(1,l2);x=M1.x+(M2.x-M1.x)*t;y=M1.y+(M2.y-M1.y)*t;dx=M2.x-M1.x;dy=M2.y-M1.y;}
+  else{const t=(d-l1-l2)/l1;x=M2.x+(B2.x-M2.x)*t;y=M2.y+(B2.y-M2.y)*t;dx=B2.x-M2.x;dy=B2.y-M2.y;}
+  const len=Math.hypot(dx,dy)||1,off=(((u.id*37)%5)-2)*9;return{x:x-dy/len*off,y:y+dx/len*off};
+}
+function drawRing(){
+  const W=cv.clientWidth,H=cv.clientHeight;if(!W)return;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
+  const v=match.view,M=match.M,myT=match.viewTeam,me=viewSeat(),spec=spectating();
+  const G=ringGeom(W,H,v,myT);const FS=Math.round(Math.max(12,Math.min(15,H/40))),hh=FS+10;
+  // 바깥 원·광장·복도 벽
+  ctx.fillStyle='#111925';ctx.beginPath();ctx.arc(G.cx,G.cy,G.R,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=C.line;ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle='#18222f';ctx.beginPath();ctx.arc(G.cx,G.cy,G.Rp,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#33465c';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.stroke();ctx.setLineDash([]);
+  ctx.font=`11px ${FONT}`;ctx.fillStyle=C.muted;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('광장',G.cx,G.cy-G.Rp+12);
+  for(let ti=0;ti<G.n;ti++){
+    const a=G.ang(ti),nx=-Math.sin(a),ny=Math.cos(a);
+    const r1=G.Rp,r2=G.Rb-G.BR*0.2;
+    ctx.fillStyle='#16202c';ctx.beginPath();
+    ctx.moveTo(G.cx+r1*Math.cos(a)+nx*G.cw/2,G.cy+r1*Math.sin(a)+ny*G.cw/2);ctx.lineTo(G.cx+r2*Math.cos(a)+nx*G.cw/2,G.cy+r2*Math.sin(a)+ny*G.cw/2);
+    ctx.lineTo(G.cx+r2*Math.cos(a)-nx*G.cw/2,G.cy+r2*Math.sin(a)-ny*G.cw/2);ctx.lineTo(G.cx+r1*Math.cos(a)-nx*G.cw/2,G.cy+r1*Math.sin(a)-ny*G.cw/2);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='#3a4e66';ctx.lineWidth=3;
+    for(const sg of[1,-1]){ctx.beginPath();ctx.moveTo(G.cx+r1*Math.cos(a)+sg*nx*G.cw/2,G.cy+r1*Math.sin(a)+sg*ny*G.cw/2);ctx.lineTo(G.cx+r2*Math.cos(a)+sg*nx*G.cw/2,G.cy+r2*Math.sin(a)+sg*ny*G.cw/2);ctx.stroke();}
+  }
+  // 본진
+  const basePos={};
+  for(let ti=0;ti<G.n;ti++){
+    const T=v.teams[ti],P=G.at(ti,G.Rb),col=teamColor(ti);basePos[ti]=P;
+    ctx.fillStyle=C.grid;ctx.beginPath();ctx.arc(P.x,P.y,G.BR,0,Math.PI*2);ctx.fill();
+    const hpr=Math.max(0,T.hp)/M.hp;
+    ctx.strokeStyle=T.alive?col:C.dead;ctx.lineWidth=5;ctx.beginPath();ctx.arc(P.x,P.y,G.BR-3,-Math.PI/2,-Math.PI/2+Math.PI*2*hpr);ctx.stroke();
+    ctx.lineWidth=1;ctx.beginPath();ctx.arc(P.x,P.y,G.BR,0,Math.PI*2);ctx.stroke();
+    const f=flash[ti]||0;if(f>0){ctx.fillStyle=C.enemy;ctx.globalAlpha=Math.min(0.5,f);ctx.beginPath();ctx.arc(P.x,P.y,G.BR,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+    if(T.alive&&T.shield){ctx.strokeStyle=C.bar;ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.beginPath();ctx.arc(P.x,P.y,G.BR+5,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);}
+    ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=T.alive?C.fg:C.muted;ctx.font=`bold ${Math.round(G.BR*0.55)}px ${FONT}`;ctx.fillText(T.alive?Math.ceil(T.hp):'탈락',P.x,P.y+1);
+    const lab=ti===match.myTeam?'나 · '+teamName(ti):teamName(ti);
+    // 이름은 본진 바깥쪽(원 밖)으로
+    const ox=Math.cos(P.a),oy=Math.sin(P.a),dd=G.BR+14;ctx.font=`bold 12px ${FONT}`;ctx.fillStyle=T.alive?col:C.muted;
+    const lx=P.x+ox*dd+(Math.abs(oy)<0.5?ox*30:0),ly=P.y+oy*dd;ctx.fillText(lab,lx,ly);
+    if(T.alive&&T.shield){ctx.font=`bold 10px ${FONT}`;ctx.fillStyle=C.bar;ctx.fillText(`결계 ${Math.ceil(T.shield.hp)} · ${Math.ceil(shieldLeft(v,T))}초`,lx,ly+(oy>=0?13:-13));}
+  }
+  // 병력
+  const tgt=spec?null:match.input.target();const buf=match.input.buf.S;
+  const phB=!spec&&match.input.char==='S'&&buf?BARRIER_PHRASES.find(p=>p.keys.startsWith(buf)):null;
+  const tuT=v.teams[myT].turret;let tuPos=null;
+  const seen=new Set();ctx.textBaseline='middle';
+  const list=[...v.units].sort((a,b)=>((a.tt===myT||a.ft===myT)?1:0)-((b.tt===myT||b.ft===myT)?1:0)||a.p-b.p);
+  for(const u of list){
+    seen.add(u.id);const pt=ringPos(G,u);const toMe=u.tt===myT,fromMe=u.ft===myT;
+    prevUnits.set(u.id,{x:pt.x,y:pt.y,p:u.p,tt:u.tt,g:u.g*(u.cnt||1)});
+    if(!toMe&&!fromMe){ // 나와 상관없는 병력은 보낸 사람 색 점으로만
+      ctx.fillStyle=teamColor(u.ft);ctx.globalAlpha=0.7;ctx.beginPath();ctx.arc(pt.x,pt.y,3.5,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;continue;}
+    const other=toMe?u.ft:u.tt,ocol=teamColor(other),fast=(u.spd||1)>1.01;
+    const isT=tgt&&tgt.id===u.id,isTu=toMe&&tuT&&tuT.tid===u.id;
+    const cntT=(u.cnt||1)>1?` ×${u.cnt}`:'';const tag=toMe?` ◂ ${teamName(other)}`:` → ${teamName(other)}`;
+    ctx.font=`${FS}px ${FONT}`;const pre=(u.nco?'부 ':'')+(fast?'» ':'');const nw=ctx.measureText(pre+u.name).width;
+    ctx.font=`bold ${FS-1}px ${FONT}`;const sw=ctx.measureText(cntT+tag).width;const tw=nw+sw+14;
+    const x0=Math.max(4,Math.min(W-tw-4,pt.x-tw/2)),y=pt.y;
+    ctx.fillStyle=isT?'#2a2414':'#0e141c';ctx.globalAlpha=toMe?0.95:0.8;rr(x0,y-hh/2,tw,hh,5);ctx.fill();ctx.globalAlpha=1;
+    ctx.strokeStyle=isT?C.brass:ocol;ctx.lineWidth=toMe||isT?2:1;if(u.nco)ctx.setLineDash([3,3]);rr(x0,y-hh/2,tw,hh,5);ctx.stroke();ctx.setLineDash([]);
+    if(u.bar){ctx.strokeStyle=C.bar;ctx.lineWidth=1.5;rr(x0-3,y-hh/2-3,tw+6,hh+6,7);ctx.stroke();}
+    if(isTu){ctx.strokeStyle=C.tur;ctx.lineWidth=1.5;ctx.setLineDash([2,3]);rr(x0-5,y-hh/2-5,tw+10,hh+10,8);ctx.stroke();ctx.setLineDash([]);tuPos={x:pt.x,y};}
+    ctx.fillStyle=TIERC[u.tier];ctx.fillRect(x0,y-hh/2,3,hh);
+    ctx.textAlign='left';let tx=x0+8;ctx.font=`${FS}px ${FONT}`;
+    if(u.nco){ctx.fillStyle=C.nco;ctx.fillText('부 ',tx,y+1);tx+=ctx.measureText('부 ').width;}
+    if(fast){ctx.fillStyle=C.acc;ctx.fillText('» ',tx,y+1);tx+=ctx.measureText('» ').width;}
+    let n=0,lc=C.brass;
+    if(isTu&&!u.bar){n=matchedChars(u.name,u.keys.slice(0,Math.floor(tuT.prog)));lc=C.tur;}else if(isT&&!phB)n=matchedChars(u.name,buf);
+    if(n){ctx.fillStyle=lc;ctx.fillText(u.name.slice(0,n),tx,y+1);tx+=ctx.measureText(u.name.slice(0,n)).width;}
+    ctx.fillStyle=toMe?C.fg:'#a9bccf';ctx.fillText(u.name.slice(n),tx,y+1);tx+=ctx.measureText(u.name.slice(n)).width;
+    ctx.font=`bold ${FS-1}px ${FONT}`;if(cntT){ctx.fillStyle=C.acc;ctx.fillText(cntT,tx,y+1);tx+=ctx.measureText(cntT).width;}
+    ctx.fillStyle=ocol;ctx.fillText(tag,tx,y+1);
+    if(u.bar){const ph=BARRIER_PHRASES[u.bar-1];ctx.font=`bold 11px ${FONT}`;
+      const lit=isT&&phB?matchedChars(ph.name,buf):isTu?matchedChars(ph.name,ph.keys.slice(0,Math.floor(tuT.prog))):0;
+      let lx=x0,ly=y-hh/2-7;ctx.fillStyle=C.bar;ctx.fillText('배리어 ',lx,ly);lx+=ctx.measureText('배리어 ').width;
+      if(lit){ctx.fillStyle=isTu&&!isT?C.tur:C.brass;ctx.fillText(ph.name.slice(0,lit),lx,ly);lx+=ctx.measureText(ph.name.slice(0,lit)).width;}
+      ctx.fillStyle='#e4f2ff';ctx.fillText(ph.name.slice(lit),lx,ly);}
+  }
+  if(tuT){const bp=basePos[myT];const tx0=Math.max(4,Math.min(W-170,bp.x-80)),ty0=bp.y-G.BR-40;
+    ctx.fillStyle='#0e141c';rr(tx0,ty0,160,20,5);ctx.fill();ctx.strokeStyle=C.tur;ctx.lineWidth=1.5;rr(tx0,ty0,160,20,5);ctx.stroke();
+    ctx.font=`bold 11px ${FONT}`;ctx.fillStyle=C.tur;ctx.textAlign='left';ctx.fillText(`포탑 Lv${tuT.lv} · ${tuT.n}글자 이하 · ${Math.ceil(turretLeft(v,v.teams[myT]))}초`,tx0+8,ty0+10);
+    if(tuPos){ctx.strokeStyle=C.tur;ctx.globalAlpha=0.6;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(tx0+80,ty0+20);ctx.lineTo(tuPos.x,tuPos.y);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;}}
+  for(const [id,o] of prevUnits)if(!seen.has(id)){
+    prevUnits.delete(id);
+    if(!v.teams[o.tt]||!v.teams[o.tt].alive)continue;
+    if(o.tt!==myT&&!(basePos[o.tt]))continue;
+    if(o.p>=0.97){flash[o.tt]=0.7;const bp=basePos[o.tt];fx.push({x:bp.x,y:bp.y-G.BR-4,text:`-${o.g}`,col:C.enemy,t:0});}
+    else if(o.tt===myT)fx.push({x:o.x,y:o.y,text:'요격',col:C.brass,t:0});
+  }
+  ctx.textAlign='center';ctx.font=`bold ${FS+1}px ${FONT}`;
+  for(let i=fx.length-1;i>=0;i--){const f=fx[i];f.t+=1/60;if(f.t>0.9){fx.splice(i,1);continue;}ctx.globalAlpha=1-f.t/0.9;ctx.fillStyle=f.col;ctx.fillText(f.text,f.x,f.y-f.t*26);ctx.globalAlpha=1;}
+  for(let i=0;i<flash.length;i++)flash[i]=Math.max(0,(flash[i]||0)-0.04);
+  const ph=v.ncoPhase();
+  ctx.textAlign='left';ctx.font=`12px ${FONT}`;ctx.fillStyle=C.muted;
+  ctx.fillText('보낸 병력: 보낸 사람 복도 → 광장 → 받는 사람 복도',12,16);ctx.fillText('나와 상관없는 병력은 보낸 사람 색 점으로 표시',12,32);
+  if(ph){ctx.textAlign='right';ctx.font=`bold 12px ${FONT}`;ctx.fillStyle=C.nco;ctx.fillText(`서든데스 · 부사관 ${ph.n}단계 · ${Math.round(ph.rate*match.roomLv/300)}타 · ${ph.tiers.join('·')}급${ph.left!=null?` · 다음 단계까지 ${Math.ceil(ph.left)}초`:''}`,W-12,16);}
+  ctx.textBaseline='alphabetic';
+}
 function draw(){
+  if(match&&match.M.ffa)return drawRing();
   const W=cv.clientWidth,H=cv.clientHeight;if(!W)return;
   ctx.clearRect(0,0,W,H);ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
   const BW=Math.min(110,W*0.085),L=BW+12,R=W-BW-12,mid=H/2;
@@ -1113,8 +1230,8 @@ function draw(){
     ctx.font=`${FS}px ${FONT}`;
     // 난전: 오는 병력엔 보낸 사람, 보내는 병력엔 받는 사람을 그 사람 색으로
     const other=M.ffa?(toMe?u.ft:u.tt):null;const ocol=other!==null?teamColor(other):null;
-    const fast=(u.spd||1)>1.01;const pre=(u.nco?'부 ':'')+(fast?'» ':'');const suf=other!==null?(toMe?` ◂ ${teamName(other)}`:` → ${teamName(other)}`):'';
-    ctx.font=`${FS}px ${FONT}`;const nw=ctx.measureText(pre+u.name).width;ctx.font=`bold ${FS-1}px ${FONT}`;const sw=suf?ctx.measureText(suf).width:0;ctx.font=`${FS}px ${FONT}`;
+    const fast=(u.spd||1)>1.01;const pre=(u.nco?'부 ':'')+(fast?'» ':'');const suf=other!==null?(toMe?` ◂ ${teamName(other)}`:` → ${teamName(other)}`):'';const cntT=(u.cnt||1)>1?` ×${u.cnt}`:'';
+    ctx.font=`${FS}px ${FONT}`;const nw=ctx.measureText(pre+u.name).width;ctx.font=`bold ${FS-1}px ${FONT}`;const sw=(suf?ctx.measureText(suf).width:0)+(cntT?ctx.measureText(cntT).width:0);ctx.font=`${FS}px ${FONT}`;
     const tw=nw+sw+18;
     let x0,x1;if(toMe){const hd=R-(R-L)*u.p;x0=hd;x1=hd+tw;}else{const hd=L+(R-L)*u.p;x1=hd;x0=hd-tw;}
     const isT=tgt&&tgt.id===u.id,mate=toMe&&aimBy[u.id],isTu=toMe&&tuT&&tuT.tid===u.id;
@@ -1131,6 +1248,7 @@ function draw(){
     if(isTu&&!u.bar){const n=matchedChars(u.name,u.keys.slice(0,Math.floor(tuT.prog)));const a=u.name.slice(0,n);ctx.fillStyle=C.tur;ctx.fillText(a,tx,y+1);tx+=ctx.measureText(a).width;ctx.fillStyle=C.fg;ctx.fillText(u.name.slice(n),tx,y+1);tx+=ctx.measureText(u.name.slice(n)).width;}
     else if(isT&&!phB){const n=matchedChars(u.name,buf);const a=u.name.slice(0,n);ctx.fillStyle=C.brass;ctx.fillText(a,tx,y+1);tx+=ctx.measureText(a).width;ctx.fillStyle=C.fg;ctx.fillText(u.name.slice(n),tx,y+1);tx+=ctx.measureText(u.name.slice(n)).width;}
     else{ctx.fillStyle=toMe?C.fg:(mine?'#cfe3f7':'#93a6ba');ctx.fillText(u.name,tx,y+1);tx+=ctx.measureText(u.name).width;}
+    if(cntT){ctx.font=`bold ${FS-1}px ${FONT}`;ctx.fillStyle=C.acc;ctx.fillText(cntT,tx,y+1);tx+=ctx.measureText(cntT).width;ctx.font=`${FS}px ${FONT}`;}
     if(suf){ctx.font=`bold ${FS-1}px ${FONT}`;ctx.fillStyle=ocol;ctx.fillText(suf,tx,y+1);ctx.font=`${FS}px ${FONT}`;}
     if(mate){ctx.font=`11px ${FONT}`;ctx.fillStyle=C.mate;ctx.textAlign='right';ctx.fillText(`${aimBy[u.id]} 조준`,x1,y-hh/2-6);ctx.textAlign='left';}
     if(u.bar){const ph=BARRIER_PHRASES[u.bar-1];ctx.font=`bold 11px ${FONT}`;ctx.textAlign='left';
@@ -1138,7 +1256,7 @@ function draw(){
       let lx=x0,ly=y-hh/2-7;ctx.fillStyle=C.bar;ctx.fillText('배리어 ',lx,ly);lx+=ctx.measureText('배리어 ').width;
       if(lit){ctx.fillStyle=isTu&&!isT?C.tur:C.brass;ctx.fillText(ph.name.slice(0,lit),lx,ly);lx+=ctx.measureText(ph.name.slice(0,lit)).width;}
       ctx.fillStyle='#e4f2ff';ctx.fillText(ph.name.slice(lit),lx,ly);ctx.font=`${FS}px ${FONT}`;}
-    prevUnits.set(u.id,{x:toMe?x0:x1,y,p:u.p,tt:u.tt,g:u.g});
+    prevUnits.set(u.id,{x:toMe?x0:x1,y,p:u.p,tt:u.tt,g:u.g*(u.cnt||1)});
   }
   if(tuT){const tx0=L+6,ty0=mid-30;ctx.fillStyle='#0e141c';rr(tx0,ty0,158,22,5);ctx.fill();ctx.strokeStyle=C.tur;ctx.lineWidth=1.5;rr(tx0,ty0,158,22,5);ctx.stroke();
     ctx.font=`bold 11px ${FONT}`;ctx.fillStyle=C.tur;ctx.textAlign='left';ctx.fillText(`포탑 Lv${tuT.lv} · ${tuT.n}글자 이하 · ${Math.ceil(turretLeft(v,v.teams[myT]))}초`,tx0+8,ty0+12);
@@ -1235,7 +1353,7 @@ function updateBoards(){
     const nm=n?`<span class="hit">${esc(u.name.slice(0,n))}</span>${esc(u.name.slice(n))}`:esc(u.name);
     const from=match.M.ffa?` · 보낸 사람 <b style="color:${teamColor(u.ft)}">${esc(teamName(u.ft))}</b>${u.nco?' (부사관)':''}`:'';
     const barTxt=u.bar?` · <b style="color:#9ad0ff">배리어 ${u.bar}단계 "${BARRIER_PHRASES[u.bar-1].name}"</b>`:'';
-    return`<div class="row"><span class="tier t${u.tier}">${u.tier}급</span><div class="nm">${u.nco&&!match.M.ffa?'<span style="color:var(--nco)">부사관 · </span>':''}${nm}<div class="sub">피해 ${u.g}${barTxt}${from}${aimBy[u.id]?` · <span class="aimtag">${esc(aimBy[u.id])} 조준 중</span>`:''}</div></div><span class="st num">${((1-u.p)*u.T).toFixed(1)}초</span></div>`;
+    return`<div class="row"><span class="tier t${u.tier}">${u.tier}급</span><div class="nm">${u.nco&&!match.M.ffa?'<span style="color:var(--nco)">부사관 · </span>':''}${nm}<div class="sub">피해 ${u.g*(u.cnt||1)}${(u.cnt||1)>1?` · <b style="color:#f6c177">${u.cnt}기 합류</b>`:''}${barTxt}${from}${aimBy[u.id]?` · <span class="aimtag">${esc(aimBy[u.id])} 조준 중</span>`:''}</div></div><span class="st num">${((1-u.p)*u.T).toFixed(1)}초</span></div>`;
   }).join('')+(inc.length>10?`<div class="empty">그 밖에 ${inc.length-10}기</div>`:''):'<div class="empty">지금은 오는 적이 없습니다</div>';
 }
 
