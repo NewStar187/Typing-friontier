@@ -232,11 +232,10 @@ table.stats tr.me td{color:var(--brass)}
   <div class="bottom" id="bottom">
     <section class="console" id="console">
       <div class="chars">
-        <span class="arrow">◀</span>
+        <kbd>Tab</kbd>
         <span class="chip o" id="chipO">장교 · 소환</span>
         <span class="chip s" id="chipS">주술사 · 요격</span>
         <span class="chip lock" title="마법은 아직 들어 있지 않습니다">마법사</span>
-        <span class="arrow">▶</span>
       </div>
       <div class="typeline" id="typeline"><span class="lab" id="tlLab">장교</span><span class="txt" id="tlTxt"></span><span class="caret"></span></div>
       <div class="hint" id="hint"></div>
@@ -313,7 +312,7 @@ table.stats tr.me td{color:var(--brass)}
     <div class="card">
       <h2>조작</h2>
       <div class="keys">
-        <kbd>← →</kbd><span>장교와 주술사 전환. 전환하면 치던 내용은 지워집니다</span>
+        <kbd>Tab</kbd><span>장교와 주술사 전환 (← →도 됩니다). 전환하면 치던 내용은 지워집니다</span>
         <kbd>장교</kbd><span>병력 이름을 치고 <kbd>Space</kbd>를 두 번 누르면 출격</span>
         <kbd>주술사</kbd><span>우리 본진으로 오는 적의 이름을 치고 <kbd>Space</kbd>를 두 번 누르면 요격. 같은 이름이 여럿이면 가장 가까운 적부터. 팀원이 먼저 잡으면 다음으로 가까운 적을 잡습니다</span>
         <kbd>Enter</kbd><span>경기 중 채팅</span>
@@ -722,7 +721,7 @@ class HumanInput{
   onKey(e){
     if(this.dead())return;
     const code=e.code;
-    if(code==='ArrowLeft'||code==='ArrowRight'){e.preventDefault();if(e.repeat)return;this.tick();this.switchTo(this.char==='O'?'S':'O');return;}
+    if(code==='Tab'||code==='ArrowLeft'||code==='ArrowRight'){e.preventDefault();if(e.repeat)return;this.tick();this.switchTo(this.char==='O'?'S':'O');return;}
     if(code==='Backspace'){e.preventDefault();this.tick();if(this.pending){this.pending=false;return;}this.buf[this.char]=this.buf[this.char].slice(0,-1);return;}
     const key=keyFromEvent(e);if(key===null)return;
     e.preventDefault();this.tick();
