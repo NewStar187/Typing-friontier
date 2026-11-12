@@ -128,6 +128,7 @@ canvas#field{display:block;position:absolute;inset:0;width:100%;height:100%}
 .empty{color:var(--muted);font-size:13px;padding:6px 0}
 
 /* ---------- 오버레이 화면 ---------- */
+#netWarn{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:100;background:#2a1a12;color:#ffcf9e;border:1px solid #c9733a;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.4);pointer-events:none;max-width:calc(100vw - 32px);text-align:center}
 .screen{position:fixed;inset:0;background:var(--bg);overflow:auto;z-index:20;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
 .screen.dim{background:rgba(8,12,17,.88)}
 .wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
@@ -237,6 +238,7 @@ table.stats tr.me td{color:var(--brass)}
 </style>
 </head>
 <body>
+<div id="netWarn" hidden></div>
 
 <!-- ===== 경기 화면 ===== -->
 <div id="app">
@@ -1683,6 +1685,7 @@ const net={
     }).catch(()=>joinErr('연결 서버에 닿지 못했습니다. 인터넷 연결을 확인하세요.'));
   },
   onGuest(c,d){
+    if(c!==this.hostConn)return; // 이미 끊긴 것으로 처리한 연결에서 늦게 온 메시지는 무시
     this.lastRx.set('host',performance.now());
     if(d.t==='deny'){this.hostConn=null;joinErr(d.why);try{c.close();}catch(e){}return;}
     if(d.t==='welcome'){this.chat=d.chat||[];$('joinMsg').textContent='';return;}
@@ -1702,7 +1705,8 @@ const net={
     else if(d.t==='end')endMatch(d);
   },
   hostLost(why){
-    const had=!!this.room;this.hostConn=null;this.room=null;this.chat=[];
+    const had=!!this.room,c=this.hostConn;this.hostConn=null;this.room=null;this.chat=[];
+    if(c)setTimeout(()=>{try{c.close();}catch(e){}},0); // 끊긴 것으로 본 연결은 닫아서 방장 쪽에서도 봇으로 바뀌게 한다
     if(had){match=null;toLobby();joinErr(why);}
   },
   leaveRoom(silent){
@@ -1717,19 +1721,40 @@ const net={
 };
 function dirStatus(t,err){$('dirStatus').textContent=t;$('dirStatus').classList.toggle('err',!!err);}
 function joinErr(t){const m=$('joinMsg');m.textContent=t;m.classList.add('err');}
-// 생존 신호: 1초마다 보내고, 6초 동안 아무것도 오지 않으면 끊긴 것으로 본다
-setInterval(()=>{
-  const now=performance.now();
-  if(net.isHost&&net.room){for(const [pid,c] of net.guests){if(c.open)c.send({t:'ping'});const t=net.lastRx.get(pid);if(t&&now-t>6000)net.guestGone(pid,'연결이 끊겼습니다');}}
-  else if(net.hostConn&&net.hostConn.open){net.hostConn.send({t:'ping'});const t=net.lastRx.get('host');if(t&&now-t>6000)net.hostLost('방장과 연결이 끊겼습니다.');}
-},1000);
+// 숨은 탭에서도 늦춰지지 않는 타이머. 브라우저는 가려지거나 최소화된 탭의 setInterval을 1초에 한 번 이하로 늦추지만,
+// Worker 안의 타이머는 늦추지 않는다. Worker를 못 쓰는 환경에서는 일반 타이머만으로 동작한다.
+const bgTimer=(()=>{const fns=[];
+  try{const src='onmessage=e=>{setInterval(()=>postMessage(0),e.data)}';
+    const w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));
+    w.onmessage=()=>{for(const f of fns)f();};w.postMessage(16);}catch(e){}
+  return{add(f){fns.push(f);}};})();
+// 생존 신호: 1초마다 보낸다. 3초 동안 아무것도 오지 않으면 화면 위에 경고를 띄우고, 15초가 지나면 끊긴 것으로 본다.
+const NET_WARN=3000,NET_DROP=15000;let lastBeat=performance.now(),netGrace=0;
+function iceState(c){try{return c.peerConnection.iceConnectionState;}catch(e){return '?';}}
+function netWarn(t){const el=$('netWarn');if(!t){if(!el.hidden)el.hidden=true;return;}el.textContent=t;el.hidden=false;}
+function heartbeat(){
+  const now=performance.now(),gap=now-lastBeat;if(gap<950)return;lastBeat=now;
+  // 이쪽 브라우저가 한동안 멈춰 있었다면(절전·탭 정지 등) 그사이 밀린 메시지를 먼저 받도록 판정을 잠시 미룬다
+  if(gap>2500)netGrace=now+3000;const judge=now>netGrace;
+  if(net.isHost&&net.room){
+    for(const [pid,c] of net.guests){if(c.open)c.send({t:'ping'});const t=net.lastRx.get(pid);
+      if(judge&&t&&now-t>NET_DROP)net.guestGone(pid,`연결이 끊겼습니다 (${Math.round((now-t)/1000)}초 동안 신호 없음 · 연결 상태 ${iceState(c)})`);}
+    netWarn('');
+  }else if(net.hostConn&&net.hostConn.open){
+    const c=net.hostConn;c.send({t:'ping'});const t=net.lastRx.get('host'),q=t?now-t:0;
+    if(judge&&q>NET_DROP){netWarn('');net.hostLost(`방장과 연결이 끊겼습니다. (${Math.round(q/1000)}초 동안 신호 없음 · 연결 상태 ${iceState(c)})`);}
+    else netWarn(q>NET_WARN?`방장과의 연결이 불안정합니다 · ${Math.floor(q/1000)}초째 신호 없음 · ${Math.round(NET_DROP/1000)}초가 지나면 방에서 나가집니다`:'');
+  }else netWarn('');
+}
+setInterval(heartbeat,1000);bgTimer.add(heartbeat);
 window.addEventListener('beforeunload',()=>{try{net.leaveRoom(true);}catch(e){}});
 
 /* =====================================================================
    루프
    ===================================================================== */
 let lastT=performance.now(),frameN=0;
-setInterval(()=>{const now=performance.now();const dt=Math.min(0.25,(now-lastT)/1000)*TS;lastT=now;tick(dt);},16);
+function loopTick(){const now=performance.now();if(now-lastT<12)return;const dt=Math.min(0.25,(now-lastT)/1000)*TS;lastT=now;tick(dt);}
+setInterval(loopTick,16);bgTimer.add(loopTick);
 function frame(){
   frameN++;
   if(match&&match.state!=='over'){draw();updateHud();if(frameN%6===0)updateBoards();}
